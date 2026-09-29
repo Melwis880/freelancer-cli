@@ -79,6 +79,7 @@ Bitti sayılır: projeyi bilmeyen biri README ile 5 dakikada `flx scan` çalış
 ## Faz 5 - Yayın
 - [x] Ön temizlik (2026-09-29): repo kökündeki `traces/`, `state/`, `.env.local`, `keywords.txt` silindi (Meriç onayı); token artık sadece `~/.config/flx/.env.local`.
 - [x] Canlı teşhis ve düzeltme (2026-09-29): canlı `scan` 3. kelimede zaman aşımına uğradı (istekler 8-28 sn). A/B ölçümü: `owner_info` olmadan 1,0 sn, ile 1,8 sn -> yavaşlığın asıl sebebi API tarafı, `owner_info` kaldı. `scan` artık hata veren kelimeyi atlıyor (senaryo 31, `schema_version` 2: `failed_keywords`). Zaman aşımı 20 sn kaldı.
+- [ ] Açık konu - alaka (2026-09-29 canlı tarama, 9 kelime, 21 sn, 0 hata, 102 ilan): kabaca 1/3'ü hedefe uygun, ~1/2'si ilgisiz (web sitesi, illüstrasyon, video, satış ortaklığı, tadilat). İlgisizler en yeni ilanlarda yoğun. Olası sebep: çok kelimeli terimlerdeki genel kelimeler ("development", "integration", "automation") gevşek eşleşiyor. Adaylar: kelime başına teşhis (hangi terim gürültü getiriyor), metin yerine `jobs[]` (beceri ID) filtresi, JSON'a `matched_keywords`.
 - [ ] Temiz oturumda `security-audit` -> `security.md`
 - [ ] Temiz oturumda `optimize` -> `OPTIMIZATIONS.md`
 - [ ] Önemli bulguları düzelt, tüm testleri yeniden çalıştır
