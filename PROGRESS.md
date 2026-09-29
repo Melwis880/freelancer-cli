@@ -17,12 +17,12 @@ Not: kurulmadan önce `PYTHONPATH=src python -m flx ...`; kurulumdan sonra (`pip
 **Faz 0 tamam (2026-09-29): 5 test geçiyor, komutlar henüz 'not built yet' ile dürüstçe hata veriyor.**
 
 ## Faz 1 - Güvenli çekirdek, trace ve senaryolar
-- [ ] Sadece GET atan HTTP istemcisi; başka istek türü hata verir
-- [ ] Token okuma (ortam değişkeni, yoksa `.env.local`); maskeleme
-- [ ] Hata yönetimi: 401 / 404 / 429 (kademeli bekleme, en fazla 3 tekrar) / zaman aşımı / bozuk JSON
-- [ ] Trace kaydı: `traces/YYYY-MM-DD.jsonl`, `run_id` + `seq` ile ilişkili, token asla yok
-- [ ] `--debug` genel bayrağı: aynı trace satırlarını anlık olarak ekrana (stderr) da basar, token maskeli
-- [ ] Senaryo listesi `tests/SCENARIOS.md` ve her biri için otomatik test:
+- [x] Sadece GET atan HTTP istemcisi; başka istek türü hata verir (yönlendirme de izlenmez, token başka adrese gitmesin)
+- [x] Token okuma (ortam değişkeni, yoksa `.env.local`); maskeleme
+- [x] Hata yönetimi: 401 / 404 / 429 (kademeli bekleme, en fazla 3 tekrar) / zaman aşımı / bozuk JSON
+- [x] Trace kaydı: `traces/YYYY-MM-DD.jsonl`, `run_id` + `seq` ile ilişkili, token asla yok
+- [x] `--debug` genel bayrağı: aynı trace satırlarını anlık olarak ekrana (stderr) da basar, token maskeli
+- [x] Senaryo listesi `tests/SCENARIOS.md` ve her biri için otomatik test:
       1. Normal arama sonuç döner
       2. Boş sonuç
       3. Token yok -> istek atılmadan net mesaj
@@ -36,6 +36,9 @@ Not: kurulmadan önce `PYTHONPATH=src python -m flx ...`; kurulumdan sonra (`pip
       11. `scan`'de aynı ilan iki kelimede çıkarsa tek kayıt
       12. Trace dosyasında token geçmiyor
 Bitti sayılır: 12 senaryonun hepsi testte geçiyor; bir test çalıştırmasının trace'i beklenen adımları gösteriyor.
+Not: çekirdek hazır (`client.search_projects`, `client.get_project`, `models.merge_projects`); CLI komutları Faz 2'de bunlara bağlanacak.
+Ek senaryolar: 14 (404), 15 (`--debug`), 16 (trace adımları), 17 (bozuk token), 18 (diğer API hataları), 19 (yönlendirme izlenmez), 20 (trace yazılamazsa uyarı). 13 Faz 2'ye ayrıldı.
+**Faz 1 tamam (2026-09-29): 47 test geçiyor; 10 kasıtlı bozmanın 10'u da testlerde yakalandı.**
 
 ## Faz 2 - Komutlar
 - [ ] `flx whoami` - token'ı kontrol eder (sadece kullanıcı adı)
@@ -56,6 +59,7 @@ Bitti sayılır: dört komut sahte API ile testleri geçiyor, tablo düzgün hiz
 - [ ] Token yolu: panelden hazır token mı, gerekirse `flx login` (OAuth) mı
 - [ ] Token'ı `~/Projects/freelancer-cli/.env.local` dosyasına ben eklerim (sohbete asla yapıştırılmaz)
 - [ ] Canlı kontrol: `flx whoami`, `flx scan`; trace ile istekler doğrulanır
+- [ ] Arama parametre ve alan adlarını canlı yanıtla doğrula (`user_location_details`, `user_status`, `seo_url`, `location.country.name`, `status.payment_verified`)
 Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen yolu gösteriyor.
 
 ## Faz 4 - Dokümantasyon

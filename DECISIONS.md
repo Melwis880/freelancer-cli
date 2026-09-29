@@ -13,6 +13,7 @@ Her satır: karar - neden. Bir karar sessizce değiştirilmez; değişmesi gerek
 
 ## Güvenlik
 - Sadece GET; başka her istek türü kod seviyesinde hata verir - teklif veya mesaj gönderimi fiziksel olarak imkânsız.
+- Yönlendirmeler (3xx) izlenmez, anlaşılır hata verir - token asla başka bir sunucuya gitmesin (2026-09-29, Meriç onayı).
 - Token `FREELANCER_TOKEN` ortam değişkeninden, yoksa projenin `.env.local` dosyasından okunur (Faz 4'te başkaları için `~/.config/flx/` yedeği eklenecek); ekrana, hata mesajına ve trace'e asla yazılmaz.
 - Diske erişim: sadece `.env.local` ve `keywords.txt` okunur; sadece `traces/` ve `state/seen.json` (sadece görülen ilan ID'leri, `--only-new` için) yazılır. İkisi de git'e girmez.
 - Girdi: arama metni URL'e güvenli kodlanır; ilan ID'si sadece sayı kabul edilir, değilse istek atılmaz.
