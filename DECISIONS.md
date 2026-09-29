@@ -13,19 +13,22 @@ Her satır: karar - neden. Bir karar sessizce değiştirilmez; değişmesi gerek
 
 ## Güvenlik
 - Sadece GET; başka her istek türü kod seviyesinde hata verir - teklif veya mesaj gönderimi fiziksel olarak imkânsız.
+- API yanıtı en fazla 10 MiB okunur, fazlası hata; aşırı iç içe JSON çökme değil, anlaşılır hata - bozuk veya kötü niyetli bir yanıt belleği doldurmasın (2026-09-29, Meriç onayı, security.md).
 - Yönlendirmeler (3xx) izlenmez, anlaşılır hata verir - token asla başka bir sunucuya gitmesin (2026-09-29, Meriç onayı).
-- API'den gelen metinler terminale basılmadan önce kontrol/biçim karakterlerinden (ANSI kaçış dizileri, bidi, sıfır genişlikli karakterler) temizlenir; `--json` bunları silmez, kaçışlı yazar - kötü niyetli bir ilan başlığı terminali bozamasın (terminal injection) (2026-09-29, Meriç onayı).
-- Dosyaların evi `~/.config/flx/` (`$XDG_CONFIG_HOME/flx`): token (`.env.local`), `keywords.txt`, `seen.json`, `traces/`. İlk çalıştırmada klasör (sadece sahibi okuyabilir, 700) ve varsayılan `keywords.txt` oluşturulur, var olan asla ezilmez. Çalışılan klasörde `.env.local` veya `keywords.txt` varsa o kullanılır (geliştirici kolaylığı) - `flx` kurulunca her klasörden çalışsın (2026-09-29, Meriç kararı; önceki "Faz 4'te sadece yedek" planının yerine).
+- API'den gelen metinler terminale basılmadan önce kontrol/biçim karakterlerinden (ANSI kaçış dizileri, bidi, sıfır genişlikli karakterler) temizlenir; `--json` bunları silmez, kaçışlı yazar - kötü niyetli bir ilan başlığı terminali bozamasın (terminal injection) (2026-09-29, Meriç onayı). `scan` uyarıları da aynı temizlikten geçer (2026-09-29, security.md).
+- Dosyaların evi `~/.config/flx/` (`$XDG_CONFIG_HOME/flx`): token (`.env.local`), `keywords.txt`, `seen.json`, `traces/`. İlk çalıştırmada klasör (sadece sahibi okuyabilir, 700) ve varsayılan `keywords.txt` oluşturulur, var olan asla ezilmez. Klasör zaten varsa ve başkalarına açıksa (ör. `mkdir -p` ile 775) her çalıştırmada 700'e çekilir; `traces/` da 700 (2026-09-29, Meriç onayı, security.md). Çalışılan klasörde `.env.local` veya `keywords.txt` varsa o kullanılır (geliştirici kolaylığı) - `flx` kurulunca her klasörden çalışsın (2026-09-29, Meriç kararı; önceki "Faz 4'te sadece yedek" planının yerine). Bu dosyalar güvenilmeyen bir klasörden gelebileceği için: sadece normal dosya, UTF-8, en fazla 64 KiB; `scan` en fazla 50 kelime alır - FIFO veya `/dev/zero` flx'i kilitlemesin, dev bir liste kullanıcının token'ıyla binlerce istek attırmasın (2026-09-29, Meriç onayı, security.md).
 - Token sırası: `FREELANCER_TOKEN` ortam değişkeni, sonra çalışılan klasördeki `.env.local`, sonra `~/.config/flx/.env.local`; ekrana, hata mesajına ve trace'e asla yazılmaz.
 - Diske erişim: sadece `.env.local` ve `keywords.txt` okunur; sadece config klasörü (ilk çalıştırmada), varsayılan `keywords.txt`, `traces/` ve `seen.json` (sadece görülen ilan ID'leri, `--only-new` için) yazılır. Hepsi `~/.config/flx/` altında, repo dışında.
 - Girdi: arama metni URL'e güvenli kodlanır; ilan ID'si sadece sayı kabul edilir, değilse istek atılmaz.
-- `scan` kelimeler arasında 1 sn bekler - API'yi yormamak, 429 riskini düşürmek.
+- `scan`'de iki kelimenin istekleri arasında en az 1 sn olur, başlangıçtan başlangıca ölçülür: istek zaten 1 sn'den uzun sürdüyse ayrıca beklenmez - API'yi yormamak, 429 riskini düşürmek, boşuna beklememek (2026-09-29, Meriç onayı, OPTIMIZATIONS F1; önceki "her kelimeden sonra 1 sn" kuralının yerine; 9 kelimelik taramada ~8 sn kazanç).
+- Zaman aşımı (20 sn): istek 2 sn sonra bir kez tekrar denenir, ikinci zaman aşımında hata (`scan`'de o kelime atlanır). Diğer ağ hataları tekrarlanmaz - yavaş API günlerinde kelime kaybını azaltmak; GET tekrarı zararsız (2026-09-29, Meriç onayı, OPTIMIZATIONS F2).
 - 429 (hız limiti): kademeli bekleme ile en fazla 3 tekrar (1, 2, 4 sn; `Retry-After` varsa o, en fazla 10 sn); sonra anlaşılır hata - Meriç'in tercihi, 2026-09-29.
 
 ## Trace
 - Her çalıştırma `~/.config/flx/traces/YYYY-MM-DD.jsonl` dosyasına yazılır, her zaman açık - sorun anında geçmiş hazır olsun; hangi klasörden çalıştırılırsa çalıştırılsın tek yerde toplansın.
 - Her satır: `run_id`, `seq`, zaman, komut, adım, uç nokta, parametreler, durum kodu, süre (ms), sonuç sayısı, hata - aynı `run_id` tek çalıştırmanın tüm adımlarını bağlar.
 - Token hiçbir zaman yazılmaz; ilan açıklamaları kısaltılır.
+- Satırlar saf ASCII yazılır (ASCII dışı karakterler `\uXXXX` kaçışlı) - trace'teki API metni `--debug` ya da `cat` ile terminale kontrol/bidi karakteri olarak ulaşamasın (2026-09-29, Meriç onayı, security.md).
 - `--debug` bayrağı trace satırlarını ayrıca stderr'e basar (token maskeli) - canlı izleme için.
 
 ## Kalite

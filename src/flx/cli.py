@@ -14,7 +14,6 @@ from flx.errors import FlxError
 from flx.render import clean_line
 from flx.trace import Tracer
 
-EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_NOT_IMPLEMENTED = 2
 
@@ -81,7 +80,7 @@ def main(argv: list[str] | None = None, *, cwd: Path | None = None, **overrides:
 
     Files live in the config dir (files.py); `cwd` (default: current directory) may override its
     .env.local and keywords.txt. `overrides` are test hooks passed on to commands.Context
-    (environ, opener, sleep, now, columns).
+    (environ, opener, sleep, now, monotonic, columns).
     """
     args = build_parser().parse_args(argv)
     cwd = Path.cwd() if cwd is None else Path(cwd)
@@ -90,7 +89,7 @@ def main(argv: list[str] | None = None, *, cwd: Path | None = None, **overrides:
     try:
         files.ensure_config(config)
     except OSError as exc:
-        print(f"flx: could not create {config} ({exc.strerror or exc}).", file=sys.stderr)
+        print(f"flx: could not create or secure {config} ({exc.strerror or exc}).", file=sys.stderr)
     tracer = Tracer(args.command, config / files.TRACE_DIR, debug=args.debug)
     ctx = commands.Context(cwd=cwd, config=config, tracer=tracer, environ=environ, **overrides)
     options = {k: v for k, v in vars(args).items() if k not in ("handler", "command", "debug")}

@@ -18,7 +18,9 @@ from flx.errors import ApiError, BadResponseError, FlxError, InvalidInputError, 
 from flx.trace import Tracer
 
 SCAN_LIMIT = 20  # results per keyword
-SCAN_PAUSE_S = 1  # between keywords, to go easy on the API and stay clear of HTTP 429
+# At least this long from one keyword's request to the next, to go easy on the API and stay clear
+# of HTTP 429. Measured start to start: a request that took longer already made the gap.
+SCAN_PAUSE_S = 1
 # A keyword that fails with one of these is skipped and the scan goes on. Anything else (bad token,
 # rate limit that outlasted its retries) would fail for every keyword, so it stops the scan.
 SKIPPABLE = (NetworkError, ApiError, BadResponseError)
@@ -35,6 +37,7 @@ class Context:
     opener: Callable[..., Any] | None = None
     sleep: Callable[[float], None] = time.sleep
     now: Callable[[], float] = time.time
+    monotonic: Callable[[], float] = time.monotonic
     columns: int | None = None
 
     def client(self) -> Client:
@@ -45,8 +48,9 @@ class Context:
         return self.columns or shutil.get_terminal_size((100, 24)).columns
 
     def warn(self, message: str) -> None:
+        """Warn on stderr and in the trace. The message may carry API text, so it is cleaned."""
         self.tracer.log("warning", message=message)
-        print(f"flx: {message}", file=sys.stderr)
+        print(f"flx: {render.clean_line(self.tracer.scrub(message))}", file=sys.stderr)
 
 
 def whoami(args: Namespace, ctx: Context) -> int:
@@ -81,9 +85,13 @@ def scan(args: Namespace, ctx: Context) -> int:
     keywords = files.load_keywords(ctx.cwd, ctx.config)
     seen = _load_seen(ctx) if args.only_new else set()
     batches, failed = [], []
-    for i, keyword in enumerate(keywords):
-        if i:
-            ctx.sleep(SCAN_PAUSE_S)
+    started = None
+    for keyword in keywords:
+        if started is not None:
+            wait = SCAN_PAUSE_S - (ctx.monotonic() - started)
+            if wait > 0:
+                ctx.sleep(wait)
+        started = ctx.monotonic()
         try:
             batches.append(client.search_projects(keyword, limit=SCAN_LIMIT))
         except SKIPPABLE as exc:

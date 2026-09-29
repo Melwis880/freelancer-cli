@@ -7,6 +7,7 @@ network, the real environment or the repo's own .env.local.
 import copy
 import dataclasses
 import json
+import os
 import stat
 import unicodedata
 import unittest
@@ -246,6 +247,16 @@ class S25Scan(unittest.TestCase):
         self.assertEqual(data["keywords"], ["n8n", "Zapier", "llm"])
         self.assertEqual([p["id"] for p in data["projects"]], [103, 102, 101])
 
+    def test_pause_counts_from_the_start_of_the_previous_request(self):
+        outcomes = [ok(result_with()) for _ in range(3)]
+        slow = run_cli(self, ["scan"], *outcomes, keywords="a\nb\nc\n", request_s=1.4)
+        self.assertEqual(slow.sleeps, [])  # each request already took longer than the gap
+        outcomes = [ok(result_with()) for _ in range(3)]
+        quick = run_cli(self, ["scan"], *outcomes, keywords="a\nb\nc\n", request_s=0.3)
+        self.assertEqual(len(quick.sleeps), 2)
+        for wait in quick.sleeps:
+            self.assertAlmostEqual(wait, 0.7)
+
 
 class S26Keywords(unittest.TestCase):
     def test_empty_keywords_file_stops_before_any_request(self):
@@ -289,6 +300,26 @@ class S27TerminalSafety(unittest.TestCase):
         run = run_cli(self, ["search", "x"], http_error(500, {"message": "bad\x1b[2Jthing"}))
         self.assertNotIn("\x1b", run.err)
         self.assertIn("bad [2Jthing", run.err)
+
+    def test_scan_warnings_are_cleaned(self):
+        evil = http_error(500, {"message": "bad\x1b]52;c;cHduZWQ=\x07thing\u202e"})
+        run = run_cli(self, ["scan"], evil, ok(SEARCH_RESULT), keywords="n8n\nzapier\n")
+        self.assertEqual(run.code, 0)
+        self.assertIn("keyword 'n8n' failed", run.err)
+        for char in self.UNSAFE:
+            self.assertNotIn(char, run.err)
+
+    def test_debug_and_trace_lines_are_ascii(self):
+        message = "caf\u00e9 \x9b31m \u202eexe \u200b"
+        run = run_cli(self, ["--debug", "search", "x"], http_error(500, {"message": message}))
+        debug = [line for line in run.err.splitlines() if line.startswith("{")]
+        self.assertTrue(debug and all(line.isascii() for line in debug))
+        for char in ("\x9b", "\u202e", "\u200b"):
+            self.assertNotIn(char, run.err)  # the plain error line is cleaned too
+        written = "\n".join(trace_lines(run.config))
+        self.assertTrue(written.isascii())
+        errors = [json.loads(line) for line in trace_lines(run.config) if '"error"' in line]
+        self.assertIn(message, errors[0]["error"])  # the original text survives, escaped
 
 
 def config_of(root):
@@ -350,6 +381,27 @@ class S30ConfigDir(unittest.TestCase):
         queries = [query_of(r)["query"][0] for r in run.opener.requests]
         self.assertEqual(queries, list(files.DEFAULT_KEYWORDS))
 
+    def test_an_existing_open_config_dir_is_tightened(self):
+        root = temp_dir(self)
+        config = config_of(root)
+        config.chmod(0o775)  # what `mkdir -p` gives with umask 002
+        run = run_cli(self, ["whoami"], ok({"username": "meric"}), root=root)
+        self.assertEqual(run.code, 0)
+        self.assertEqual(stat.S_IMODE(config.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE((config / files.TRACE_DIR).stat().st_mode), 0o700)
+
+    def test_seen_file_write_never_follows_a_planted_link(self):
+        root = temp_dir(self)
+        victim = root / "victim.txt"
+        victim.write_text("keep me\n", encoding="utf-8")
+        (config_of(root) / (files.SEEN_FILE + ".tmp")).symlink_to(victim)
+        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n", root=root)
+        self.assertEqual(run.code, 0)
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep me\n")
+        self.assertEqual(files.load_seen(run.config), {101, 102})
+        leftovers = [p.name for p in run.config.iterdir() if p.name.endswith(".tmp") and not p.is_symlink()]
+        self.assertEqual(leftovers, [])
+
     def test_existing_keywords_are_never_overwritten(self):
         root = temp_dir(self)
         (config_of(root) / files.KEYWORDS_FILE).write_text("my own term\n", encoding="utf-8")
@@ -380,30 +432,78 @@ class S30ConfigDir(unittest.TestCase):
         self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "relative", "HOME": "/h"}), Path("/h/.config/flx"))
 
 
+class S32UntrustedFiles(unittest.TestCase):
+    """.env.local and keywords.txt may come from a checkout flx does not own."""
+
+    def test_env_file_that_is_not_a_small_regular_file_is_refused(self):
+        cases = {
+            "directory": lambda path: path.mkdir(),
+            "too big": lambda path: path.write_text("#" * (files.MAX_FILE_BYTES + 1)),
+            "not utf-8": lambda path: path.write_bytes(b"FREELANCER_TOKEN=\xff\xfe\n"),
+        }
+        if hasattr(os, "mkfifo"):
+            cases["fifo"] = os.mkfifo  # would block a plain read forever
+        for label, make in cases.items():
+            with self.subTest(label):
+                root = temp_dir(self)
+                (root / "cwd").mkdir()
+                make(root / "cwd" / ".env.local")
+                run = run_cli(self, ["whoami"], token=None, root=root)
+                self.assertEqual(run.code, cli.EXIT_ERROR)
+                self.assertIn("Could not read", run.err)
+                self.assertEqual(run.opener.requests, [])
+
+    def test_keywords_file_that_is_too_big_is_refused(self):
+        run = run_cli(self, ["scan"], keywords="n8n\n" + "#" * files.MAX_FILE_BYTES)
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertIn("larger than 64 KiB", run.err)
+        self.assertEqual(run.opener.requests, [])
+
+    def test_keywords_that_are_not_a_regular_file_fall_back_to_the_config_dir(self):
+        root = temp_dir(self)
+        (root / "cwd").mkdir()
+        (root / "cwd" / files.KEYWORDS_FILE).mkdir()
+        (config_of(root) / files.KEYWORDS_FILE).write_text("my own term\n", encoding="utf-8")
+        run = run_cli(self, ["scan", "--json"], ok(result_with()), root=root)
+        self.assertEqual(json.loads(run.out)["keywords"], ["my own term"])
+
+    def test_at_most_fifty_keywords(self):
+        terms = "".join(f"term {i}\n" for i in range(files.MAX_KEYWORDS + 1))
+        run = run_cli(self, ["scan"], keywords=terms)
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertIn("51 keywords; scan takes at most 50", run.err)
+        self.assertEqual(run.opener.requests, [])
+        terms = "".join(f"term {i}\n" for i in range(files.MAX_KEYWORDS))
+        outcomes = [ok(result_with()) for _ in range(files.MAX_KEYWORDS)]
+        self.assertEqual(run_cli(self, ["scan"], *outcomes, keywords=terms).code, 0)
+
+
 class S31PartialScan(unittest.TestCase):
     KEYWORDS = "n8n\nzapier\ncrewai\n"
     FIRST = result_with({"id": 1, "title": "n8n job", "time_submitted": 100})
     THIRD = result_with({"id": 3, "title": "crewai job", "time_submitted": 300})
 
     def test_a_failing_keyword_is_skipped_and_the_rest_is_shown(self):
+        # outcomes for zapier, and the sleeps around it: a timeout is retried once after 2 s, which
+        # already makes the 1 s gap before crewai
         failures = {
-            "timeout": TimeoutError("timed out"),
-            "network": urllib.error.URLError("Name or service not known"),
-            "server error": http_error(503),
-            "broken body": FakeResponse(b"<html>"),
+            "timeout": ((TimeoutError("timed out"), TimeoutError("timed out")), [1, 2]),
+            "network": ((urllib.error.URLError("Name or service not known"),), [1, 1]),
+            "server error": ((http_error(503),), [1, 1]),
+            "broken body": ((FakeResponse(b"<html>"),), [1, 1]),
         }
-        for label, failure in failures.items():
+        for label, (failure, sleeps) in failures.items():
             with self.subTest(label):
-                run = run_cli(self, ["scan", "--json"], ok(self.FIRST), failure, ok(self.THIRD), keywords=self.KEYWORDS)
+                run = run_cli(self, ["scan", "--json"], ok(self.FIRST), *failure, ok(self.THIRD), keywords=self.KEYWORDS)
                 self.assertEqual(run.code, 0)
                 data = json.loads(run.out)
                 self.assertEqual([p["id"] for p in data["projects"]], [3, 1])
                 self.assertEqual(data["failed_keywords"], ["zapier"])
                 self.assertIn("keyword 'zapier' failed", run.err)
-                self.assertEqual(run.sleeps, [1, 1])  # the pause still happens around the failure
+                self.assertEqual(run.sleeps, sleeps)
 
     def test_failure_is_traced(self):
-        run = run_cli(self, ["scan"], ok(self.FIRST), TimeoutError(), ok(self.THIRD), keywords=self.KEYWORDS)
+        run = run_cli(self, ["scan"], ok(self.FIRST), http_error(503), ok(self.THIRD), keywords=self.KEYWORDS)
         lines = [json.loads(line) for line in trace_lines(run.config)]
         warning = next(l for l in lines if l["step"] == "warning")
         self.assertIn("zapier", warning["message"])
@@ -411,11 +511,11 @@ class S31PartialScan(unittest.TestCase):
         self.assertEqual((summary["failed"], summary["found"]), (1, 2))
 
     def test_only_new_marks_only_what_was_actually_fetched(self):
-        run = run_cli(self, ["scan", "--only-new"], ok(self.FIRST), TimeoutError(), ok(self.THIRD), keywords=self.KEYWORDS)
+        run = run_cli(self, ["scan", "--only-new"], ok(self.FIRST), http_error(503), ok(self.THIRD), keywords=self.KEYWORDS)
         self.assertEqual(files.load_seen(run.config), {1, 3})
 
     def test_every_keyword_failing_is_an_error(self):
-        run = run_cli(self, ["scan"], TimeoutError(), TimeoutError(), TimeoutError(), keywords=self.KEYWORDS)
+        run = run_cli(self, ["scan"], *[TimeoutError()] * 6, keywords=self.KEYWORDS)
         self.assertEqual(run.code, cli.EXIT_ERROR)
         self.assertEqual(run.out, "")
         self.assertIn("Every keyword failed (3 of 3)", run.err)

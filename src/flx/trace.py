@@ -2,7 +2,8 @@
 
 Lines go to `traces/YYYY-MM-DD.jsonl` (local date) and, with --debug, to stderr as well. Registered
 secrets are masked in every string and long strings are shortened, so neither the token nor full
-project descriptions ever land on disk.
+project descriptions ever land on disk. Lines are pure ASCII (non-ASCII is escaped), so API text in
+a trace cannot reach the terminal as a control, bidi or zero-width character, with --debug or `cat`.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ class Tracer:
                 **fields,
             }
         )
-        line = json.dumps(record, ensure_ascii=False)
+        line = json.dumps(record)
         self._write(self.trace_dir / f"{now:%Y-%m-%d}.jsonl", line)
         if self.debug:
             print(line, file=self._stream or sys.stderr)
@@ -80,7 +81,7 @@ class Tracer:
         if self._write_failed:
             return
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
         except OSError as exc:

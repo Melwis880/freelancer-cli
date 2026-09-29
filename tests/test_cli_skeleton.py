@@ -30,6 +30,12 @@ class CliSkeletonTest(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             auth.login()
 
+    def test_version_has_a_single_source(self):
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('dynamic = ["version"]', pyproject)
+        self.assertIn('version = {attr = "flx.__version__"}', pyproject)
+        self.assertNotRegex(pyproject, r'(?m)^version\s*=\s*"')
+
     def test_python_dash_m_flx_help_runs(self):
         result = subprocess.run(
             [sys.executable, "-m", "flx", "--help"],

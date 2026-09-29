@@ -119,15 +119,17 @@ def age(timestamp: int | None, now: float) -> str:
 
 def clean_line(text: str) -> str:
     """One terminal-safe line: control and formatting characters removed, whitespace collapsed."""
-    return " ".join("".join(_DROP.get(unicodedata.category(c), c) for c in text).split())
+    return " ".join(_strip_controls(text).split())
 
 
 def clean_block(text: str) -> str:
     """Terminal-safe text that keeps its line breaks."""
     lines = re.split("\r\n|[\r\n  ]", text)
-    return "\n".join(
-        "".join(_DROP.get(unicodedata.category(c), c) for c in line).rstrip() for line in lines
-    ).strip("\n")
+    return "\n".join(_strip_controls(line).rstrip() for line in lines).strip("\n")
+
+
+def _strip_controls(text: str) -> str:
+    return "".join(_DROP.get(unicodedata.category(c), c) for c in text)
 
 
 def display_width(text: str) -> int:

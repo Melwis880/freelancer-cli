@@ -29,7 +29,7 @@ from fakes import (
     trace_text,
 )
 
-from flx import auth, cli, models
+from flx import auth, cli, client as client_module, models
 from flx.client import AUTH_HEADER, Client
 from flx.errors import (
     ApiError,
@@ -136,6 +136,16 @@ class S03MissingToken(unittest.TestCase):
             Client("", make_tracer(self), opener=opener)
         self.assertEqual(opener.requests, [])
 
+    def test_one_wording_for_a_missing_token(self):
+        with self.assertRaises(TokenError) as loaded:
+            self.load({})
+        with self.assertRaises(TokenError) as checked:
+            auth.check_token("")
+        prefix = "No Freelancer token found. Set FREELANCER_TOKEN, or put FREELANCER_TOKEN=... in "
+        self.assertTrue(str(loaded.exception).startswith(prefix))
+        self.assertTrue(str(checked.exception).startswith(prefix))
+        self.assertIn(str(self.config), str(loaded.exception))
+
     def test_env_file_is_the_fallback(self):
         self.write_env_file('# local secrets\nexport FREELANCER_TOKEN="from-file"\nOTHER=x\n')
         self.assertEqual(self.load({}), "from-file")
@@ -213,13 +223,23 @@ class S06NetworkError(unittest.TestCase):
                 self.assertIn("Could not reach Freelancer", str(ctx.exception))
                 self.assertEqual(len(rig.opener.requests), 1)
 
-    def test_timeout_says_it_timed_out(self):
+    def test_timeout_is_retried_once_then_says_it_timed_out(self):
         for failure in (TimeoutError("timed out"), urllib.error.URLError(TimeoutError())):
             with self.subTest(failure=failure):
-                rig = make_client(self, failure)
+                rig = make_client(self, failure, failure)
                 with self.assertRaises(NetworkError) as ctx:
                     rig.client.search_projects("n8n")
                 self.assertIn("timed out after 20 s", str(ctx.exception))
+                self.assertEqual(len(rig.opener.requests), 2)
+                self.assertEqual(rig.sleeps, [2])
+
+    def test_timeout_then_success_recovers(self):
+        rig = make_client(self, TimeoutError("timed out"), ok(SEARCH_RESULT))
+        self.assertEqual(len(rig.client.search_projects("n8n")), 2)
+        lines = read_trace(rig.tracer)
+        self.assertEqual([l["step"] for l in lines], ["http", "retry", "http", "result"])
+        self.assertEqual((lines[1]["reason"], lines[1]["wait_s"]), ("timeout", 2))
+        self.assertEqual(lines[0]["error"], "timed out after 20 s")
 
 
 class S07BadData(unittest.TestCase):
@@ -392,7 +412,7 @@ class S16TraceSteps(unittest.TestCase):
         self.assertEqual([l["seq"] for l in lines], [1, 2, 3, 4])
         self.assertEqual({l["run_id"] for l in lines}, {rig.tracer.run_id})
         self.assertEqual([l["status"] for l in lines if l["step"] == "http"], [429, 200])
-        self.assertEqual(lines[1]["wait_s"], 1)
+        self.assertEqual((lines[1]["wait_s"], lines[1]["reason"]), (1, "rate_limit"))
         self.assertEqual(lines[3]["count"], 2)
         for line in lines:
             self.assertEqual(line["command"], "test")
@@ -441,6 +461,23 @@ class S18OtherApiErrors(unittest.TestCase):
         self.assertIn("Invalid query", str(ctx.exception))
 
 
+class S33HostileResponse(unittest.TestCase):
+    def test_oversized_body_is_a_clear_error_and_is_not_read_in_full(self):
+        body = json.dumps({"status": "success", "result": {"projects": []}, "pad": "x" * 200}).encode()
+        response = FakeResponse(body)
+        with mock.patch.object(client_module, "MAX_BODY_BYTES", 100):
+            rig = make_client(self, response)
+            with self.assertRaises(BadResponseError) as ctx:
+                rig.client.search_projects("n8n")
+        self.assertIn("more than", str(ctx.exception))
+        self.assertEqual(response.read_size, 101)
+
+    def test_deeply_nested_json_is_a_clear_error(self):
+        rig = make_client(self, FakeResponse(b"[" * 100_000 + b"]" * 100_000))
+        with self.assertRaises(BadResponseError):
+            rig.client.search_projects("n8n")
+
+
 class _RecordingHandler(http.server.BaseHTTPRequestHandler):
     seen = []
 
@@ -469,7 +506,8 @@ class S19NoRedirects(unittest.TestCase):
     def setUp(self):
         _RecordingHandler.seen = []
         server = http.server.HTTPServer(("127.0.0.1", 0), _RecordingHandler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        # A short poll interval lets shutdown() return at once instead of after up to 0.5 s.
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         patcher = mock.patch.dict(os.environ, {"no_proxy": "*", "NO_PROXY": "*"})

@@ -2,6 +2,7 @@
 
 `request` refuses every method except GET before anything is built, and there is no way to pass a
 request body. Redirects are not followed, so the token header is never re-sent to another URL.
+HTTP 429 is retried with backoff (up to 3 times) and a timeout once; nothing else is retried.
 """
 
 from __future__ import annotations
@@ -37,6 +38,9 @@ AUTH_HEADER = "Freelancer-OAuth-V1"
 TIMEOUT_S = 20
 BACKOFF_S = (1, 2, 4)  # one wait per retry after HTTP 429
 MAX_RETRY_AFTER_S = 10
+TIMEOUT_RETRIES = 1  # a slow API day usually recovers on the next try
+TIMEOUT_WAIT_S = 2
+MAX_BODY_BYTES = 10 * 1024 * 1024  # real responses are well under 1 MiB
 
 SEARCH_ENDPOINT = "projects/0.1/projects/active/"
 # The multi-project endpoint answers in the same shape as search, so one parser serves both.
@@ -48,6 +52,10 @@ SELF_ENDPOINT = "users/0.1/self/"
 DETAILS = {"full_description": True, "owner_info": True}
 
 _PROJECT_ID = re.compile(r"[0-9]{1,12}")
+
+
+class _TimedOut(Exception):
+    """One request timed out; `request` decides whether to retry."""
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -121,21 +129,33 @@ class Client:
                 method=method,
             )
         url = self._url(endpoint, params)
-        for attempt in range(1, len(BACKOFF_S) + 2):
-            status, headers, body = self._round_trip(url, endpoint, params, attempt)
+        attempt = rate_limited = timeouts = 0
+        while True:
+            attempt += 1
+            try:
+                status, headers, body = self._round_trip(url, endpoint, params, attempt)
+            except _TimedOut as exc:
+                timeouts += 1
+                if timeouts > TIMEOUT_RETRIES:
+                    raise self._fail(NetworkError, f"Could not reach Freelancer: {exc}.", endpoint) from None
+                self._retry(endpoint, attempt, TIMEOUT_WAIT_S, "timeout")
+                continue
             if status != 429:
                 return self._decode(status, body, endpoint)
-            if attempt > len(BACKOFF_S):
-                break
-            wait = _retry_wait(attempt, headers.get("Retry-After"))
-            self._tracer.log("retry", endpoint=endpoint, attempt=attempt, wait_s=wait)
-            self._sleep(wait)
-        raise self._fail(
-            RateLimitError,
-            f"Freelancer is still rate limiting (HTTP 429) after {len(BACKOFF_S)} retries. "
-            "Wait a minute and try again.",
-            endpoint,
-        )
+            rate_limited += 1
+            if rate_limited > len(BACKOFF_S):
+                raise self._fail(
+                    RateLimitError,
+                    f"Freelancer is still rate limiting (HTTP 429) after {len(BACKOFF_S)} retries. "
+                    "Wait a minute and try again.",
+                    endpoint,
+                )
+            wait = _retry_wait(rate_limited, headers.get("Retry-After"))
+            self._retry(endpoint, attempt, wait, "rate_limit")
+
+    def _retry(self, endpoint: str, attempt: int, wait: float, reason: str) -> None:
+        self._tracer.log("retry", endpoint=endpoint, attempt=attempt, wait_s=wait, reason=reason)
+        self._sleep(wait)
 
     def _url(self, endpoint: str, params: dict[str, Any] | None) -> str:
         pairs = {key: _param(value) for key, value in (params or {}).items()}
@@ -157,12 +177,14 @@ class Client:
         headers: Any = {}
         try:
             with self._open(request, timeout=self._timeout) as response:
-                status, body = response.status, response.read()
+                status, body = response.status, response.read(MAX_BODY_BYTES + 1)
         except urllib.error.HTTPError as exc:
             status, headers, body = exc.code, exc.headers or {}, _read_body(exc)
         except (OSError, http.client.HTTPException) as exc:
             reason = _network_reason(exc, self._timeout)
             self._trace_http(endpoint, params, attempt, started, error=reason)
+            if _is_timeout(exc):
+                raise _TimedOut(reason) from None
             raise self._fail(NetworkError, f"Could not reach Freelancer: {reason}.", endpoint) from None
         self._trace_http(endpoint, params, attempt, started, status=status)
         return status, headers, body
@@ -184,12 +206,19 @@ class Client:
                 "redirects so the token only goes to the API it was meant for.",
                 endpoint,
             )
+        too_big = len(body) > MAX_BODY_BYTES
         try:
-            data = json.loads(body)
-        except ValueError:
+            data = None if too_big else json.loads(body)
+        except (ValueError, RecursionError):  # RecursionError: absurdly deep nesting
             data = None
         if status >= 400:
             raise self._fail(ApiError, f"Freelancer returned HTTP {status}{_api_message(data)}.", endpoint)
+        if too_big:
+            raise self._fail(
+                BadResponseError,
+                f"Freelancer sent more than {MAX_BODY_BYTES // (1024 * 1024)} MiB; try again later.",
+                endpoint,
+            )
         if not isinstance(data, dict):
             raise self._fail(
                 BadResponseError,
@@ -239,15 +268,20 @@ def _retry_wait(attempt: int, retry_after: str | None) -> float:
 
 def _read_body(error: urllib.error.HTTPError) -> bytes:
     try:
-        return error.read() or b""
+        return error.read(MAX_BODY_BYTES + 1) or b""
     except (OSError, http.client.HTTPException, AttributeError):
         return b""
 
 
-def _network_reason(exc: BaseException, timeout: float) -> str:
+def _is_timeout(exc: BaseException) -> bool:
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-    if isinstance(reason, TimeoutError):
+    return isinstance(reason, TimeoutError)
+
+
+def _network_reason(exc: BaseException, timeout: float) -> str:
+    if _is_timeout(exc):
         return f"timed out after {timeout} s"
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
     return str(reason) or type(reason).__name__
 
 

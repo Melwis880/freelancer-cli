@@ -55,8 +55,9 @@ class FakeResponse:
         self.status = status
         self._body = body if isinstance(body, bytes) else json.dumps(body).encode()
 
-    def read(self):
-        return self._body
+    def read(self, size=-1):
+        self.read_size = size
+        return self._body if size is None or size < 0 else self._body[:size]
 
     def __enter__(self):
         return self
@@ -78,15 +79,34 @@ def http_error(code, body=b"", headers=None):
     return urllib.error.HTTPError("https://fake.invalid/", code, "error", message, io.BytesIO(body))
 
 
+class FakeClock:
+    """Monotonic time that moves only when flx sleeps or a request takes `request_s`."""
+
+    def __init__(self, request_s=0.0):
+        self.now = 0.0
+        self.request_s = request_s
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
 class FakeOpener:
     """Stands in for urlopen: records every request and replays queued outcomes in order."""
 
-    def __init__(self, *outcomes):
+    def __init__(self, *outcomes, clock=None):
         self.outcomes = list(outcomes)
         self.requests = []
+        self.clock = clock
 
     def __call__(self, request, timeout=None):
         self.requests.append(request)
+        if self.clock:
+            self.clock.now += self.clock.request_s
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, BaseException):
             raise outcome
@@ -114,8 +134,8 @@ def temp_dir(test):
     return Path(tmp.name)
 
 
-def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, columns=100):
-    """Run flx in-process against a fake API.
+def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, columns=100, request_s=0.0):
+    """Run flx in-process against a fake API and a fake clock (each request takes `request_s`).
 
     Everything lives under a temp `root`: `root/cwd` is the working directory and `root/xdg` is
     XDG_CONFIG_HOME, so the real environment, ~/.config/flx and the repo's .env.local are never
@@ -130,8 +150,8 @@ def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, column
     environ = {"XDG_CONFIG_HOME": str(root / "xdg")}
     if token:
         environ["FREELANCER_TOKEN"] = token
-    opener = FakeOpener(*outcomes)
-    sleeps = []
+    clock = FakeClock(request_s)
+    opener = FakeOpener(*outcomes, clock=clock)
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = cli.main(
@@ -139,7 +159,8 @@ def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, column
             cwd=cwd,
             environ=environ,
             opener=opener,
-            sleep=sleeps.append,
+            sleep=clock.sleep,
+            monotonic=clock.monotonic,
             now=lambda: NOW,
             columns=columns,
         )
@@ -148,7 +169,7 @@ def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, column
         out=out.getvalue(),
         err=err.getvalue(),
         opener=opener,
-        sleeps=sleeps,
+        sleeps=clock.sleeps,
         root=root,
         cwd=cwd,
         config=root / "xdg" / "flx",

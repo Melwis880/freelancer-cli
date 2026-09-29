@@ -15,12 +15,11 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from flx.errors import TokenError
+from flx.files import read_small, reason
 
 TOKEN_ENV = "FREELANCER_TOKEN"
 ENV_FILE = ".env.local"
 MASK = "***"
-
-MISSING_TOKEN = f"No Freelancer token found. Set {TOKEN_ENV} in the environment or in {ENV_FILE}."
 
 
 def load_token(cwd: Path, config: Path, environ: Mapping[str, str] | None = None) -> str:
@@ -30,17 +29,14 @@ def load_token(cwd: Path, config: Path, environ: Mapping[str, str] | None = None
     for path in (Path(cwd) / ENV_FILE, Path(config) / ENV_FILE):
         token = token or _token_from_file(path)
     if not token:
-        raise TokenError(
-            f"No Freelancer token found. Set {TOKEN_ENV}, or put {TOKEN_ENV}=... in "
-            f"{Path(config) / ENV_FILE}."
-        )
+        raise _missing(Path(config) / ENV_FILE)
     return token
 
 
 def check_token(token: str) -> None:
     """Refuse a token that is empty or would break the HTTP header. Never echoes the token."""
     if not token:
-        raise TokenError(MISSING_TOKEN)
+        raise _missing()
     if not (token.isascii() and token.isprintable()) or " " in token:
         raise TokenError(
             f"{TOKEN_ENV} contains spaces, line breaks or non-ASCII characters; copy it again."
@@ -54,13 +50,17 @@ def redact(text: str, secrets: Iterable[str]) -> str:
     return text
 
 
+def _missing(env_file: Path | str = ENV_FILE) -> TokenError:
+    return TokenError(f"No Freelancer token found. Set {TOKEN_ENV}, or put {TOKEN_ENV}=... in {env_file}.")
+
+
 def _token_from_file(path: Path) -> str:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = read_small(path)
     except FileNotFoundError:
         return ""
-    except (OSError, UnicodeDecodeError):
-        raise TokenError(f"Could not read {path}.") from None
+    except (OSError, ValueError) as exc:
+        raise TokenError(f"Could not read {path} ({reason(exc)}).") from None
     token = ""
     for line in text.splitlines():
         key, sep, value = line.strip().removeprefix("export ").partition("=")

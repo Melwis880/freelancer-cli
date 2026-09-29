@@ -19,9 +19,9 @@ official Freelancer REST API and does nothing else.
 - **Read-only by construction.** The HTTP client refuses every method but GET before a request is
   built, and does not follow redirects, so the token never leaves for another host. It cannot bid
   or message.
-- **Polite to the API.** `scan` waits 1 s between keywords. On HTTP 429 it backs off 1, 2, 4 s
-  (or honours `Retry-After`, capped at 10 s), retries at most 3 times, then stops with a clear
-  message.
+- **Polite to the API.** `scan` keeps keyword requests at least 1 s apart, start to start. On
+  HTTP 429 it backs off 1, 2, 4 s (or honours `Retry-After`, capped at 10 s), retries at most 3
+  times, then stops with a clear message. A timeout is retried once.
 - **One command for the whole routine.** `flx scan --only-new` searches every term in
   `keywords.txt`, merges and de-duplicates the results, sorts newest first, and shows only jobs no
   earlier scan has shown.
@@ -35,7 +35,7 @@ official Freelancer REST API and does nothing else.
   they reach the terminal.
 
 Every behaviour is listed as a scenario in `tests/SCENARIOS.md`, each with an automated test
-(84 tests, no network). The tests were checked by deliberately breaking the code: every break was
+(102 tests, no network). The tests were checked by deliberately breaking the code: every break was
 caught.
 
 ## Impact

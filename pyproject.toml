@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flx"
-version = "0.1.0.dev0"
+dynamic = ["version"]  # single source: flx.__version__
 description = "Read-only CLI that finds AI and automation jobs on Freelancer.com"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,9 @@ dependencies = []
 
 [project.scripts]
 flx = "flx.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "flx.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
