@@ -25,7 +25,8 @@ SCAN_PAUSE_S = 1  # between keywords, to go easy on the API and stay clear of HT
 class Context:
     """What a command needs from outside. Tests swap in a fake opener, sleep, clock and width."""
 
-    base_dir: Path
+    cwd: Path
+    config: Path
     tracer: Tracer
     environ: Mapping[str, str]
     opener: Callable[..., Any] | None = None
@@ -34,7 +35,7 @@ class Context:
     columns: int | None = None
 
     def client(self) -> Client:
-        token = load_token(self.base_dir, self.environ)
+        token = load_token(self.cwd, self.config, self.environ)
         return Client(token, self.tracer, opener=self.opener, sleep=self.sleep)
 
     def width(self) -> int:
@@ -74,7 +75,7 @@ def project(args: Namespace, ctx: Context) -> int:
 
 def scan(args: Namespace, ctx: Context) -> int:
     client = ctx.client()
-    keywords = files.load_keywords(ctx.base_dir)
+    keywords = files.load_keywords(ctx.cwd, ctx.config)
     seen = _load_seen(ctx) if args.only_new else set()
     batches = []
     for i, keyword in enumerate(keywords):
@@ -108,17 +109,17 @@ def _envelope(command: str, ctx: Context, **fields: Any) -> dict:
 
 def _load_seen(ctx: Context) -> set[int]:
     try:
-        return files.load_seen(ctx.base_dir)
+        return files.load_seen(ctx.config)
     except ValueError as exc:
-        ctx.warn(f"{files.SEEN_FILE} is unreadable ({exc}); treating every project as new.")
+        ctx.warn(f"{ctx.config / files.SEEN_FILE} is unreadable ({exc}); treating every project as new.")
         return set()
 
 
 def _save_seen(ctx: Context, ids: set[int]) -> None:
     try:
-        files.save_seen(ctx.base_dir, ids)
+        files.save_seen(ctx.config, ids)
     except OSError as exc:
         ctx.warn(
-            f"could not save {files.SEEN_FILE} ({exc.strerror or exc}); "
+            f"could not save {ctx.config / files.SEEN_FILE} ({exc.strerror or exc}); "
             "the next --only-new scan may repeat these projects."
         )

@@ -68,7 +68,8 @@ Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen y
 **Faz 3 tamam (2026-09-29).**
 
 ## Faz 4 - Dokümantasyon
-- [ ] Başkaları için ayar yedeği: token/ayarlar `~/.config/flx/` altında da aranır
+- [x] Ön düzeltme (2026-09-29): XDG config klasörü (`~/.config/flx/`: token, `keywords.txt`, `seen.json`, `traces/`), çalışılan klasördeki `.env.local`/`keywords.txt` onu ezer; anahtar kelimeler daraltıldı (openai, chatbot, llm, ai agent, web scraping, data extraction, python script çıktı; langchain, crewai, ai agent development, llm integration, python web scraping girdi). Senaryo 30.
+- [x] Başkaları için ayar yedeği: token/ayarlar `~/.config/flx/` altında da aranır (yukarıdaki ön düzeltmeyle tam XDG evi oldu)
 - [ ] İngilizce README: ne ve neden, kurulum, token, kullanım, JSON şeması, trace, "sadece okuma"
 - [ ] LICENSE (MIT)
 - [ ] Kişisel veri içermeyen örnek çıktı

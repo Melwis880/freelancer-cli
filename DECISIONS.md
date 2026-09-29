@@ -15,16 +15,17 @@ Her satır: karar - neden. Bir karar sessizce değiştirilmez; değişmesi gerek
 - Sadece GET; başka her istek türü kod seviyesinde hata verir - teklif veya mesaj gönderimi fiziksel olarak imkânsız.
 - Yönlendirmeler (3xx) izlenmez, anlaşılır hata verir - token asla başka bir sunucuya gitmesin (2026-09-29, Meriç onayı).
 - API'den gelen metinler terminale basılmadan önce kontrol/biçim karakterlerinden (ANSI kaçış dizileri, bidi, sıfır genişlikli karakterler) temizlenir; `--json` bunları silmez, kaçışlı yazar - kötü niyetli bir ilan başlığı terminali bozamasın (terminal injection) (2026-09-29, Meriç onayı).
-- Token `FREELANCER_TOKEN` ortam değişkeninden, yoksa projenin `.env.local` dosyasından okunur (Faz 4'te başkaları için `~/.config/flx/` yedeği eklenecek); ekrana, hata mesajına ve trace'e asla yazılmaz.
-- Diske erişim: sadece `.env.local` ve `keywords.txt` okunur; sadece `traces/` ve `state/seen.json` (sadece görülen ilan ID'leri, `--only-new` için) yazılır. İkisi de git'e girmez.
+- Dosyaların evi `~/.config/flx/` (`$XDG_CONFIG_HOME/flx`): token (`.env.local`), `keywords.txt`, `seen.json`, `traces/`. İlk çalıştırmada klasör (sadece sahibi okuyabilir, 700) ve varsayılan `keywords.txt` oluşturulur, var olan asla ezilmez. Çalışılan klasörde `.env.local` veya `keywords.txt` varsa o kullanılır (geliştirici kolaylığı) - `flx` kurulunca her klasörden çalışsın (2026-09-29, Meriç kararı; önceki "Faz 4'te sadece yedek" planının yerine).
+- Token sırası: `FREELANCER_TOKEN` ortam değişkeni, sonra çalışılan klasördeki `.env.local`, sonra `~/.config/flx/.env.local`; ekrana, hata mesajına ve trace'e asla yazılmaz.
+- Diske erişim: sadece `.env.local` ve `keywords.txt` okunur; sadece config klasörü (ilk çalıştırmada), varsayılan `keywords.txt`, `traces/` ve `seen.json` (sadece görülen ilan ID'leri, `--only-new` için) yazılır. Hepsi `~/.config/flx/` altında, repo dışında.
 - Girdi: arama metni URL'e güvenli kodlanır; ilan ID'si sadece sayı kabul edilir, değilse istek atılmaz.
 - `scan` kelimeler arasında 1 sn bekler - API'yi yormamak, 429 riskini düşürmek.
 - 429 (hız limiti): kademeli bekleme ile en fazla 3 tekrar (1, 2, 4 sn; `Retry-After` varsa o, en fazla 10 sn); sonra anlaşılır hata - Meriç'in tercihi, 2026-09-29.
 
 ## Trace
-- Her çalıştırma `traces/YYYY-MM-DD.jsonl` dosyasına yazılır, her zaman açık - sorun anında geçmiş hazır olsun.
+- Her çalıştırma `~/.config/flx/traces/YYYY-MM-DD.jsonl` dosyasına yazılır, her zaman açık - sorun anında geçmiş hazır olsun; hangi klasörden çalıştırılırsa çalıştırılsın tek yerde toplansın.
 - Her satır: `run_id`, `seq`, zaman, komut, adım, uç nokta, parametreler, durum kodu, süre (ms), sonuç sayısı, hata - aynı `run_id` tek çalıştırmanın tüm adımlarını bağlar.
-- Token hiçbir zaman yazılmaz; ilan açıklamaları kısaltılır. `traces/` git'e girmez.
+- Token hiçbir zaman yazılmaz; ilan açıklamaları kısaltılır.
 - `--debug` bayrağı trace satırlarını ayrıca stderr'e basar (token maskeli) - canlı izleme için.
 
 ## Kalite

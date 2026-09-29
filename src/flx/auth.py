@@ -1,7 +1,8 @@
 """Token loading and masking, plus the `flx login` placeholder.
 
-The token comes from the FREELANCER_TOKEN environment variable, else from `.env.local` in the base
-directory. It must never be printed, logged or traced; `redact` masks it wherever text leaves flx.
+The token comes from the FREELANCER_TOKEN environment variable, else from `.env.local` in the
+current directory, else from `.env.local` in the config dir (see files.py). It must never be
+printed, logged or traced; `redact` masks it wherever text leaves flx.
 
 `login` is a placeholder for a one-time OAuth flow (`flx login`). It stays unimplemented until we
 know the Freelancer developer panel cannot hand out a token directly (PROGRESS.md, Phase 3).
@@ -22,12 +23,17 @@ MASK = "***"
 MISSING_TOKEN = f"No Freelancer token found. Set {TOKEN_ENV} in the environment or in {ENV_FILE}."
 
 
-def load_token(base_dir: Path, environ: Mapping[str, str] | None = None) -> str:
-    """Return the token from the environment, else from `<base_dir>/.env.local`."""
+def load_token(cwd: Path, config: Path, environ: Mapping[str, str] | None = None) -> str:
+    """Return the token from the environment, else `cwd/.env.local`, else `config/.env.local`."""
     environ = os.environ if environ is None else environ
-    token = environ.get(TOKEN_ENV, "").strip() or _token_from_file(Path(base_dir) / ENV_FILE)
+    token = environ.get(TOKEN_ENV, "").strip()
+    for path in (Path(cwd) / ENV_FILE, Path(config) / ENV_FILE):
+        token = token or _token_from_file(path)
     if not token:
-        raise TokenError(MISSING_TOKEN)
+        raise TokenError(
+            f"No Freelancer token found. Set {TOKEN_ENV}, or put {TOKEN_ENV}=... in "
+            f"{Path(config) / ENV_FILE}."
+        )
     return token
 
 

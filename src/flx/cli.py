@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from flx import __version__, commands
+from flx import __version__, commands, files
 from flx.errors import FlxError
 from flx.render import clean_line
 from flx.trace import Tracer
@@ -17,8 +17,6 @@ from flx.trace import Tracer
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_NOT_IMPLEMENTED = 2
-
-TRACE_DIR = "traces"
 
 
 MAX_LIMIT = 100
@@ -71,24 +69,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--only-new",
         action="store_true",
-        help="show only projects no earlier --only-new scan has shown (kept in state/seen.json)",
+        help="show only projects no earlier --only-new scan has shown (kept in seen.json)",
     )
     p.set_defaults(handler=commands.scan)
 
     return parser
 
 
-def main(argv: list[str] | None = None, *, base_dir: Path | None = None, **overrides: Any) -> int:
+def main(argv: list[str] | None = None, *, cwd: Path | None = None, **overrides: Any) -> int:
     """Run one command and return its exit code.
 
-    `base_dir` holds .env.local, keywords.txt, traces/ and state/ (default: current directory).
-    `overrides` are test hooks passed on to commands.Context (environ, opener, sleep, now, columns).
+    Files live in the config dir (files.py); `cwd` (default: current directory) may override its
+    .env.local and keywords.txt. `overrides` are test hooks passed on to commands.Context
+    (environ, opener, sleep, now, columns).
     """
     args = build_parser().parse_args(argv)
-    base_dir = Path.cwd() if base_dir is None else Path(base_dir)
-    tracer = Tracer(args.command, base_dir / TRACE_DIR, debug=args.debug)
-    overrides.setdefault("environ", os.environ)
-    ctx = commands.Context(base_dir=base_dir, tracer=tracer, **overrides)
+    cwd = Path.cwd() if cwd is None else Path(cwd)
+    environ = overrides.pop("environ", os.environ)
+    config = files.config_dir(environ)
+    try:
+        files.ensure_config(config)
+    except OSError as exc:
+        print(f"flx: could not create {config} ({exc.strerror or exc}).", file=sys.stderr)
+    tracer = Tracer(args.command, config / files.TRACE_DIR, debug=args.debug)
+    ctx = commands.Context(cwd=cwd, config=config, tracer=tracer, environ=environ, **overrides)
     options = {k: v for k, v in vars(args).items() if k not in ("handler", "command", "debug")}
     tracer.log("start", options=options)
     started = time.monotonic()

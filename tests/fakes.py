@@ -114,36 +114,51 @@ def temp_dir(test):
     return Path(tmp.name)
 
 
-def run_cli(test, argv, *outcomes, environ=None, keywords=None, base_dir=None, columns=100):
-    """Run flx in-process against a fake API, in a temp base dir with a token in its environment.
+def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, columns=100):
+    """Run flx in-process against a fake API.
 
+    Everything lives under a temp `root`: `root/cwd` is the working directory and `root/xdg` is
+    XDG_CONFIG_HOME, so the real environment, ~/.config/flx and the repo's .env.local are never
+    read. Pass `root=` from an earlier run to share its files. `keywords` goes to cwd/keywords.txt.
     A request the test did not queue an outcome for fails the test loudly (IndexError).
     """
-    base_dir = base_dir or temp_dir(test)
+    root = root or temp_dir(test)
+    cwd = root / "cwd"
+    cwd.mkdir(exist_ok=True)
     if keywords is not None:
-        (base_dir / "keywords.txt").write_text(keywords, encoding="utf-8")
+        (cwd / "keywords.txt").write_text(keywords, encoding="utf-8")
+    environ = {"XDG_CONFIG_HOME": str(root / "xdg")}
+    if token:
+        environ["FREELANCER_TOKEN"] = token
     opener = FakeOpener(*outcomes)
     sleeps = []
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = cli.main(
             argv,
-            base_dir=base_dir,
-            environ={"FREELANCER_TOKEN": TOKEN} if environ is None else environ,
+            cwd=cwd,
+            environ=environ,
             opener=opener,
             sleep=sleeps.append,
             now=lambda: NOW,
             columns=columns,
         )
     return types.SimpleNamespace(
-        code=code, out=out.getvalue(), err=err.getvalue(), opener=opener, sleeps=sleeps, base_dir=base_dir
+        code=code,
+        out=out.getvalue(),
+        err=err.getvalue(),
+        opener=opener,
+        sleeps=sleeps,
+        root=root,
+        cwd=cwd,
+        config=root / "xdg" / "flx",
     )
 
 
-def trace_lines(base_dir):
+def trace_lines(config):
     return [
         line
-        for path in sorted((Path(base_dir) / "traces").glob("*.jsonl"))
+        for path in sorted((Path(config) / "traces").glob("*.jsonl"))
         for line in path.read_text(encoding="utf-8").splitlines()
     ]
 

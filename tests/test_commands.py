@@ -7,10 +7,12 @@ network, the real environment or the repo's own .env.local.
 import copy
 import dataclasses
 import json
+import stat
 import unicodedata
 import unittest
 import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 
 import _path  # noqa: F401
 from fakes import NOW, SEARCH_RESULT, TOKEN, http_error, ok, run_cli, temp_dir
@@ -51,7 +53,7 @@ class S03NoTokenCli(unittest.TestCase):
     def test_every_command_needs_a_token_before_any_request(self):
         for argv in (["whoami"], ["search", "n8n"], ["project", "1"], ["scan", "--only-new"]):
             with self.subTest(argv=argv):
-                run = run_cli(self, argv, environ={}, keywords="n8n\n")
+                run = run_cli(self, argv, token=None, keywords="n8n\n")
                 self.assertEqual(run.code, cli.EXIT_ERROR)
                 self.assertIn("FREELANCER_TOKEN", run.err)
                 self.assertEqual(run.opener.requests, [])
@@ -62,24 +64,24 @@ class S13OnlyNew(unittest.TestCase):
     def test_second_scan_does_not_repeat_projects(self):
         first = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n")
         self.assertIn("Build an n8n workflow", first.out)
-        second = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), base_dir=first.base_dir)
+        second = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), root=first.root)
         self.assertEqual(second.out, "No new projects.\n")
         self.assertEqual(second.code, 0)
 
     def test_only_projects_not_seen_before_are_shown(self):
         first = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n")
         later = result_with({"id": 102, "title": "Python scraper"}, {"id": 103, "title": "Zapier bot"})
-        second = run_cli(self, ["scan", "--only-new", "--json"], ok(later), base_dir=first.base_dir)
+        second = run_cli(self, ["scan", "--only-new", "--json"], ok(later), root=first.root)
         self.assertEqual([p["id"] for p in json.loads(second.out)["projects"]], [103])
 
     def test_state_file_holds_project_ids_only(self):
         run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n")
-        state = json.loads((run.base_dir / files.SEEN_FILE).read_text(encoding="utf-8"))
+        state = json.loads((run.config / files.SEEN_FILE).read_text(encoding="utf-8"))
         self.assertEqual(state, {"seen": [102, 101]})
 
     def test_plain_scan_leaves_state_alone(self):
         run = run_cli(self, ["scan"], ok(SEARCH_RESULT), keywords="n8n\n")
-        self.assertFalse((run.base_dir / files.SEEN_FILE).exists())
+        self.assertFalse((run.config / files.SEEN_FILE).exists())
 
     def test_failed_scan_does_not_mark_anything_seen(self):
         run = run_cli(
@@ -87,7 +89,7 @@ class S13OnlyNew(unittest.TestCase):
         )
         self.assertEqual(run.code, cli.EXIT_ERROR)
         self.assertEqual(run.out, "")
-        self.assertFalse((run.base_dir / files.SEEN_FILE).exists())
+        self.assertFalse((run.config / files.SEEN_FILE).exists())
 
 
 class S21Whoami(unittest.TestCase):
@@ -242,18 +244,14 @@ class S25Scan(unittest.TestCase):
         self.assertEqual(data["keywords"], ["n8n", "Zapier", "llm"])
         self.assertEqual([p["id"] for p in data["projects"]], [103, 102, 101])
 
-    def test_shipped_keywords_file_has_the_default_terms(self):
-        shipped = files.load_keywords(_path.SRC.parent)
-        self.assertEqual(
-            shipped,
-            ["n8n", "make.com", "zapier", "ai agent", "llm", "chatbot", "openai",
-             "python automation", "python script", "web scraping", "data extraction"],
-        )
+    def test_repo_keywords_file_matches_the_defaults(self):
+        repo = _path.SRC.parent
+        self.assertEqual(files.load_keywords(repo, repo), list(files.DEFAULT_KEYWORDS))
 
 
 class S26Keywords(unittest.TestCase):
-    def test_missing_or_empty_keywords_file_stops_before_any_request(self):
-        for content in (None, "", "# only a comment\n\n   \n"):
+    def test_empty_keywords_file_stops_before_any_request(self):
+        for content in ("", "# only a comment\n\n   \n"):
             with self.subTest(content=content):
                 run = run_cli(self, ["scan"], keywords=content)
                 self.assertEqual(run.code, cli.EXIT_ERROR)
@@ -295,21 +293,27 @@ class S27TerminalSafety(unittest.TestCase):
         self.assertIn("bad [2Jthing", run.err)
 
 
+def config_of(root):
+    config = root / "xdg" / "flx"
+    config.mkdir(parents=True)
+    return config
+
+
 class S28SeenState(unittest.TestCase):
     def test_corrupt_state_warns_and_starts_fresh(self):
-        base = temp_dir(self)
-        (base / "state").mkdir()
-        (base / files.SEEN_FILE).write_text("{not json", encoding="utf-8")
-        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n", base_dir=base)
+        root = temp_dir(self)
+        config = config_of(root)
+        (config / files.SEEN_FILE).write_text("{not json", encoding="utf-8")
+        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n", root=root)
         self.assertEqual(run.code, 0)
         self.assertIn("unreadable", run.err)
         self.assertIn("Build an n8n workflow", run.out)
-        self.assertEqual(files.load_seen(base), {101, 102})
+        self.assertEqual(files.load_seen(config), {101, 102})
 
     def test_state_that_cannot_be_saved_warns(self):
-        base = temp_dir(self)
-        (base / "state").write_text("a file where the directory should be", encoding="utf-8")
-        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n", base_dir=base)
+        root = temp_dir(self)
+        (config_of(root) / files.SEEN_FILE).mkdir()  # a directory where the file should be
+        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n", root=root)
         self.assertEqual(run.code, 0)
         self.assertIn("could not save", run.err)
         self.assertIn("Build an n8n workflow", run.out)
@@ -337,6 +341,45 @@ class S29SearchInput(unittest.TestCase):
         run = run_cli(self, ["search", "x", "--limit", "100", "--offset", "40"], ok(result_with()))
         query = query_of(run.opener.requests[0])
         self.assertEqual((query["limit"], query["offset"]), (["100"], ["40"]))
+
+
+class S30ConfigDir(unittest.TestCase):
+    def test_first_run_creates_a_private_config_dir_with_default_keywords(self):
+        run = run_cli(self, ["scan", "--json"], *[ok(result_with()) for _ in files.DEFAULT_KEYWORDS])
+        self.assertEqual(run.code, 0)
+        self.assertEqual(stat.S_IMODE(run.config.stat().st_mode), 0o700)
+        self.assertEqual(files.load_keywords(run.cwd, run.config), list(files.DEFAULT_KEYWORDS))
+        queries = [query_of(r)["query"][0] for r in run.opener.requests]
+        self.assertEqual(queries, list(files.DEFAULT_KEYWORDS))
+
+    def test_existing_keywords_are_never_overwritten(self):
+        root = temp_dir(self)
+        (config_of(root) / files.KEYWORDS_FILE).write_text("my own term\n", encoding="utf-8")
+        run = run_cli(self, ["scan", "--json"], ok(result_with()), root=root)
+        self.assertEqual(json.loads(run.out)["keywords"], ["my own term"])
+        self.assertEqual((run.config / files.KEYWORDS_FILE).read_text(encoding="utf-8"), "my own term\n")
+
+    def test_keywords_in_cwd_override_the_config_dir(self):
+        run = run_cli(self, ["scan", "--json"], ok(result_with()), keywords="local term\n")
+        self.assertEqual(json.loads(run.out)["keywords"], ["local term"])
+
+    def test_token_from_config_dir_works_from_any_directory(self):
+        root = temp_dir(self)
+        (config_of(root) / ".env.local").write_text(f"FREELANCER_TOKEN={TOKEN}\n", encoding="utf-8")
+        run = run_cli(self, ["whoami"], ok({"username": "meric"}), token=None, root=root)
+        self.assertEqual(run.code, 0)
+        self.assertEqual(run.opener.requests[0].get_header("Freelancer-oauth-v1"), TOKEN)
+
+    def test_state_and_traces_live_in_the_config_dir_not_in_cwd(self):
+        run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n")
+        self.assertTrue((run.config / files.SEEN_FILE).is_file())
+        self.assertTrue(list((run.config / files.TRACE_DIR).glob("*.jsonl")))
+        self.assertEqual(sorted(p.name for p in run.cwd.iterdir()), ["keywords.txt"])
+
+    def test_config_dir_location(self):
+        self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "/x/cfg", "HOME": "/h"}), Path("/x/cfg/flx"))
+        self.assertEqual(files.config_dir({"HOME": "/h"}), Path("/h/.config/flx"))
+        self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "relative", "HOME": "/h"}), Path("/h/.config/flx"))
 
 
 if __name__ == "__main__":

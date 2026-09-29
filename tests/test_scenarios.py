@@ -113,14 +113,20 @@ class S03MissingToken(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.base = Path(tmp.name)
+        self.base = Path(tmp.name) / "cwd"
+        self.config = Path(tmp.name) / "config"
+        self.base.mkdir()
+        self.config.mkdir()
 
-    def write_env_file(self, text):
-        (self.base / auth.ENV_FILE).write_text(text, encoding="utf-8")
+    def write_env_file(self, text, where=None):
+        ((where or self.base) / auth.ENV_FILE).write_text(text, encoding="utf-8")
+
+    def load(self, environ):
+        return auth.load_token(self.base, self.config, environ=environ)
 
     def test_no_token_anywhere_gives_a_clear_message(self):
         with self.assertRaises(TokenError) as ctx:
-            auth.load_token(self.base, environ={})
+            self.load({})
         self.assertIn("FREELANCER_TOKEN", str(ctx.exception))
         self.assertIn(".env.local", str(ctx.exception))
 
@@ -132,15 +138,24 @@ class S03MissingToken(unittest.TestCase):
 
     def test_env_file_is_the_fallback(self):
         self.write_env_file('# local secrets\nexport FREELANCER_TOKEN="from-file"\nOTHER=x\n')
-        self.assertEqual(auth.load_token(self.base, environ={}), "from-file")
+        self.assertEqual(self.load({}), "from-file")
 
     def test_env_var_wins_over_env_file(self):
         self.write_env_file("FREELANCER_TOKEN=from-file\n")
-        self.assertEqual(auth.load_token(self.base, environ={"FREELANCER_TOKEN": "from-env"}), "from-env")
+        self.assertEqual(self.load({"FREELANCER_TOKEN": "from-env"}), "from-env")
 
     def test_blank_env_var_falls_back_to_env_file(self):
         self.write_env_file("FREELANCER_TOKEN='from-file'\n")
-        self.assertEqual(auth.load_token(self.base, environ={"FREELANCER_TOKEN": "  "}), "from-file")
+        self.assertEqual(self.load({"FREELANCER_TOKEN": "  "}), "from-file")
+
+    def test_config_dir_file_is_the_last_fallback(self):
+        self.write_env_file("FREELANCER_TOKEN=from-config\n", where=self.config)
+        self.assertEqual(self.load({}), "from-config")
+
+    def test_cwd_file_overrides_config_dir_file(self):
+        self.write_env_file("FREELANCER_TOKEN=from-config\n", where=self.config)
+        self.write_env_file("FREELANCER_TOKEN=from-cwd\n")
+        self.assertEqual(self.load({}), "from-cwd")
 
 
 class S04Unauthorized(unittest.TestCase):
@@ -351,7 +366,7 @@ class S15DebugMirror(unittest.TestCase):
     def test_debug_prints_the_same_lines_as_the_trace_file(self):
         run = run_cli(self, ["--debug", "whoami"], ok({"username": "meric"}))
         mirrored = [line for line in run.err.splitlines() if line.startswith("{")]
-        self.assertEqual(mirrored, trace_lines(run.base_dir))
+        self.assertEqual(mirrored, trace_lines(run.config))
         self.assertEqual(
             [json.loads(line)["step"] for line in mirrored], ["start", "http", "result", "end"]
         )
@@ -359,7 +374,7 @@ class S15DebugMirror(unittest.TestCase):
     def test_without_debug_stderr_has_no_trace_lines(self):
         run = run_cli(self, ["whoami"], ok({"username": "meric"}))
         self.assertEqual(run.err, "")
-        self.assertTrue(trace_lines(run.base_dir))  # still traced to disk
+        self.assertTrue(trace_lines(run.config))  # still traced to disk
 
     def test_cli_error_message_is_masked(self):
         run = run_cli(self, ["--debug", "whoami"], http_error(500, {"message": f"server echoed {TOKEN}"}))
@@ -394,7 +409,7 @@ class S16TraceSteps(unittest.TestCase):
 
     def test_cli_run_has_start_and_end(self):
         run = run_cli(self, ["search", "n8n", "--limit", "5"], ok(SEARCH_RESULT))
-        lines = [json.loads(line) for line in trace_lines(run.base_dir)]
+        lines = [json.loads(line) for line in trace_lines(run.config)]
         self.assertEqual([l["step"] for l in lines], ["start", "http", "result", "end"])
         self.assertEqual(len({l["run_id"] for l in lines}), 1)
         self.assertEqual(lines[0]["options"]["query"], "n8n")

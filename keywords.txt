@@ -2,11 +2,9 @@
 n8n
 make.com
 zapier
-ai agent
-llm
-chatbot
-openai
+langchain
+crewai
+ai agent development
+llm integration
 python automation
-python script
-web scraping
-data extraction
+python web scraping
