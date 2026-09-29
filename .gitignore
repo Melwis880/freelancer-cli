@@ -1,0 +1,14 @@
+# Secrets - never commit
+.env*
+
+# Local run data
+traces/
+state/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
