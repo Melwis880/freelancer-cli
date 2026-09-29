@@ -56,6 +56,10 @@ def parse_project(raw: Any, users: Any = None) -> Project:
     )
 
 
+def parse_username(result: Any) -> str | None:
+    return _str(_get(result, "username"))
+
+
 def merge_projects(batches: Iterable[Iterable[Project]]) -> list[Project]:
     """One list from many searches: first copy of each id kept, newest first, undated last."""
     seen: set[int] = set()

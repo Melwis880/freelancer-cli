@@ -1,5 +1,6 @@
 """Test doubles: a fake HTTP opener that never touches the network, plus sample API data."""
 
+import contextlib
 import email.message
 import io
 import json
@@ -10,10 +11,12 @@ from pathlib import Path
 
 import _path  # noqa: F401
 
+from flx import cli
 from flx.client import Client
 from flx.trace import Tracer
 
 TOKEN = "tok-SECRET-5f3a9c1e7b2d"
+NOW = 1790000000 + 2 * 3600  # two hours after project 101 was posted
 
 SEARCH_RESULT = {
     "projects": [
@@ -107,6 +110,46 @@ def make_client(test, *outcomes, stream=None):
     sleeps = []
     client = Client(TOKEN, tracer, opener=opener, sleep=sleeps.append)
     return types.SimpleNamespace(client=client, opener=opener, sleeps=sleeps, tracer=tracer)
+
+
+def temp_dir(test):
+    tmp = tempfile.TemporaryDirectory()
+    test.addCleanup(tmp.cleanup)
+    return Path(tmp.name)
+
+
+def run_cli(test, argv, *outcomes, environ=None, keywords=None, base_dir=None, columns=100):
+    """Run flx in-process against a fake API, in a temp base dir with a token in its environment.
+
+    A request the test did not queue an outcome for fails the test loudly (IndexError).
+    """
+    base_dir = base_dir or temp_dir(test)
+    if keywords is not None:
+        (base_dir / "keywords.txt").write_text(keywords, encoding="utf-8")
+    opener = FakeOpener(*outcomes)
+    sleeps = []
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(
+            argv,
+            base_dir=base_dir,
+            environ={"FREELANCER_TOKEN": TOKEN} if environ is None else environ,
+            opener=opener,
+            sleep=sleeps.append,
+            now=lambda: NOW,
+            columns=columns,
+        )
+    return types.SimpleNamespace(
+        code=code, out=out.getvalue(), err=err.getvalue(), opener=opener, sleeps=sleeps, base_dir=base_dir
+    )
+
+
+def trace_lines(base_dir):
+    return [
+        line
+        for path in sorted((Path(base_dir) / "traces").glob("*.jsonl"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
 
 
 def trace_text(tracer):

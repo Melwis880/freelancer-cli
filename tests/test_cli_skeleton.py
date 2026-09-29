@@ -2,7 +2,6 @@ import contextlib
 import io
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -21,13 +20,6 @@ class CliSkeletonTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
         for command in ("whoami", "search", "project", "scan"):
             self.assertIn(command, out.getvalue())
-
-    def test_unbuilt_commands_fail_loudly_instead_of_faking(self):
-        for argv in (["whoami"], ["search", "n8n"], ["project", "1"], ["scan", "--only-new"]):
-            err = io.StringIO()
-            with self.subTest(argv=argv), contextlib.redirect_stderr(err), tempfile.TemporaryDirectory() as tmp:
-                self.assertEqual(cli.main(argv, base_dir=Path(tmp)), cli.EXIT_NOT_IMPLEMENTED)
-                self.assertIn("not built yet", err.getvalue())
 
     def test_missing_command_is_an_error(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as ctx:

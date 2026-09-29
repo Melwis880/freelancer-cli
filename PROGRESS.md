@@ -41,25 +41,29 @@ Ek senaryolar: 14 (404), 15 (`--debug`), 16 (trace adımları), 17 (bozuk token)
 **Faz 1 tamam (2026-09-29): 47 test geçiyor; 10 kasıtlı bozmanın 10'u da testlerde yakalandı.**
 
 ## Faz 2 - Komutlar
-- [ ] `flx whoami` - token'ı kontrol eder (sadece kullanıcı adı)
-- [ ] `flx search "<arama>" [--limit N] [--offset N] [--json]`
-- [ ] `flx project <id> [--json]` - tam açıklama, bütçe, teklifler, müşteri bilgisi
-- [ ] `flx scan [--json] [--only-new]` - `keywords.txt` kelimeleri, birleştirilmiş, tekrarsız, en yeni üstte
-- [ ] `--only-new`: görülen ilan ID'leri `state/seen.json`'da tutulur, sadece yeni ilanlar gösterilir (senaryo 13: ikinci taramada aynı ilan gelmez)
-- [ ] Varsayılan `keywords.txt`: n8n, make.com, zapier, ai agent, llm, chatbot, openai,
+- [x] `flx whoami` - token'ı kontrol eder (sadece kullanıcı adı)
+- [x] `flx search "<arama>" [--limit N] [--offset N] [--json]`
+- [x] `flx project <id> [--json]` - tam açıklama, bütçe, teklifler, müşteri bilgisi
+- [x] `flx scan [--json] [--only-new]` - `keywords.txt` kelimeleri, birleştirilmiş, tekrarsız, en yeni üstte
+- [x] `--only-new`: görülen ilan ID'leri `state/seen.json`'da tutulur, sadece yeni ilanlar gösterilir (senaryo 13: ikinci taramada aynı ilan gelmez)
+- [x] Varsayılan `keywords.txt`: n8n, make.com, zapier, ai agent, llm, chatbot, openai,
       python automation, python script, web scraping, data extraction
-- [ ] Eleme yok; her sonuçta: id, başlık, link, tür, bütçe alt/üst, para birimi, teklif sayısı,
+- [x] Eleme yok; her sonuçta: id, başlık, link, tür, bütçe alt/üst, para birimi, teklif sayısı,
       ortalama teklif, yayın zamanı, müşteri ülkesi, ödeme doğrulaması, açıklama
-- [ ] `scan` kelimeler arasında 1 sn bekler (API'yi yormamak ve 429 almamak için)
-- [ ] Tablo çıktısı terminal genişliğine uyar (kırpma/hizalama, bağımlılık yok) + `schema_version`'lı `--json`
+- [x] `scan` kelimeler arasında 1 sn bekler (API'yi yormamak ve 429 almamak için)
+- [x] Tablo çıktısı terminal genişliğine uyar (kırpma/hizalama, bağımlılık yok) + `schema_version`'lı `--json`
 Bitti sayılır: dört komut sahte API ile testleri geçiyor, tablo düzgün hizalanıyor; her değişiklikte tüm test takımı yeniden çalıştı.
+Notlar: tabloda TÜR sütunu yok (saatlik bütçe `/h` ile görünür, JSON'da `type` var); dar terminalde önce AVG, sonra COUNTRY, VERIFIED, BIDS, AGE gizlenir.
+`project` komutu müşteri bilgisini tek çağrıda almak için `projects/0.1/projects/?projects[]=<id>` kullanıyor (Faz 3'te doğrulanacak).
+`--only-new` dışındaki komutlar `state/`'e dokunmaz. Yeni senaryolar: 13, 21-29.
+**Faz 2 tamam (2026-09-29): 76 test geçiyor; 11 kasıtlı bozmanın 11'i de yakalandı (scratchpad kopyasında).**
 
 ## Faz 3 - Gerçek erişim
 - [ ] Freelancer geliştirici panelinde uygulama (sadece okuma yetkisi)
 - [ ] Token yolu: panelden hazır token mı, gerekirse `flx login` (OAuth) mı
 - [ ] Token'ı `~/Projects/freelancer-cli/.env.local` dosyasına ben eklerim (sohbete asla yapıştırılmaz)
 - [ ] Canlı kontrol: `flx whoami`, `flx scan`; trace ile istekler doğrulanır
-- [ ] Arama parametre ve alan adlarını canlı yanıtla doğrula (`user_location_details`, `user_status`, `seo_url`, `location.country.name`, `status.payment_verified`)
+- [ ] Arama parametre ve alan adlarını canlı yanıtla doğrula (`user_location_details`, `user_status`, `seo_url`, `location.country.name`, `status.payment_verified`, `projects[]`, en yüksek `limit`)
 Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen yolu gösteriyor.
 
 ## Faz 4 - Dokümantasyon

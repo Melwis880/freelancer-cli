@@ -1,0 +1,12 @@
+# Search terms for `flx scan`, one per line. Blank lines and lines starting with # are skipped.
+n8n
+make.com
+zapier
+ai agent
+llm
+chatbot
+openai
+python automation
+python script
+web scraping
+data extraction

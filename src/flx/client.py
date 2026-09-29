@@ -39,10 +39,13 @@ BACKOFF_S = (1, 2, 4)  # one wait per retry after HTTP 429
 MAX_RETRY_AFTER_S = 10
 
 SEARCH_ENDPOINT = "projects/0.1/projects/active/"
-PROJECT_ENDPOINT = "projects/0.1/projects/{project_id}/"
-# Full description plus the owner's country and payment status, all in the search call.
-# Field names are verified against the live API in Phase 3.
-SEARCH_DETAILS = {
+# The multi-project endpoint answers in the same shape as search (projects + users map), so one
+# call gives a project together with its owner's details.
+PROJECTS_ENDPOINT = "projects/0.1/projects/"
+SELF_ENDPOINT = "users/0.1/self/"
+# Full description plus the owner's country and payment status, all in the same call.
+# Parameter and field names are verified against the live API in Phase 3.
+DETAILS = {
     "full_description": True,
     "user_details": True,
     "user_location_details": True,
@@ -80,7 +83,7 @@ class Client:
         self._base_url = base_url.rstrip("/")
 
     def search_projects(self, query: str, *, limit: int = 20, offset: int = 0) -> list[models.Project]:
-        params = {"query": query, "limit": limit, "offset": offset, **SEARCH_DETAILS}
+        params = {"query": query, "limit": limit, "offset": offset, **DETAILS}
         projects = models.parse_search(self.get(SEARCH_ENDPOINT, params))
         self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
         return projects
@@ -91,17 +94,24 @@ class Client:
             raise self._fail(
                 InvalidInputError,
                 f"Project id must be a positive number, got {text[:40]!r}.",
-                PROJECT_ENDPOINT,
+                PROJECTS_ENDPOINT,
             )
-        endpoint = PROJECT_ENDPOINT.format(project_id=int(text))
+        wanted = int(text)
+        not_found = f"Project {wanted} not found; it may be closed, deleted or private."
         try:
-            result = self.get(endpoint, {"full_description": True})
+            result = self.get(PROJECTS_ENDPOINT, {"projects[]": [wanted], **DETAILS})
         except NotFoundError:
-            raise NotFoundError(
-                f"Project {int(text)} not found; it may be closed, deleted or private."
-            ) from None
-        self._tracer.log("result", endpoint=endpoint, count=1)
-        return models.parse_project(result)
+            raise NotFoundError(not_found) from None
+        match = [p for p in models.parse_search(result) if p.id == wanted]
+        self._tracer.log("result", endpoint=PROJECTS_ENDPOINT, count=len(match))
+        if not match:
+            raise self._fail(NotFoundError, not_found, PROJECTS_ENDPOINT)
+        return match[0]
+
+    def get_username(self) -> str | None:
+        username = models.parse_username(self.get(SELF_ENDPOINT))
+        self._tracer.log("result", endpoint=SELF_ENDPOINT, count=int(username is not None))
+        return username
 
     def get(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
         return self.request("GET", endpoint, params)

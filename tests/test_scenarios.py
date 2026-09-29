@@ -24,6 +24,8 @@ from fakes import (
     make_tracer,
     ok,
     read_trace,
+    run_cli,
+    trace_lines,
     trace_text,
 )
 
@@ -257,15 +259,14 @@ class S09ProjectId(unittest.TestCase):
                     rig.client.get_project(bad)
                 self.assertEqual(rig.opener.requests, [])
 
-    def test_numeric_id_reaches_the_project_endpoint(self):
+    def test_numeric_id_reaches_the_projects_endpoint(self):
         for good in ("123", 123):
             with self.subTest(project_id=good):
-                rig = make_client(self, ok({"id": 123, "title": "Chatbot"}))
+                rig = make_client(self, ok({"projects": [{"id": 123, "title": "Chatbot"}]}))
                 self.assertEqual(rig.client.get_project(good).title, "Chatbot")
                 (request,) = rig.opener.requests
-                self.assertEqual(
-                    urllib.parse.urlsplit(request.full_url).path, "/api/projects/0.1/projects/123/"
-                )
+                self.assertEqual(urllib.parse.urlsplit(request.full_url).path, "/api/projects/0.1/projects/")
+                self.assertEqual(query_of(request)["projects[]"], ["123"])
 
 
 class S10QueryEncoding(unittest.TestCase):
@@ -331,47 +332,39 @@ class S12TraceHasNoToken(unittest.TestCase):
 
 class S14NotFound(unittest.TestCase):
     def test_unknown_project_gives_a_clear_message(self):
-        rig = make_client(self, http_error(404, {"status": "error", "message": "Project not found"}))
-        with self.assertRaises(NotFoundError) as ctx:
-            rig.client.get_project(999)
-        self.assertIn("Project 999 not found", str(ctx.exception))
-        self.assertEqual(rig.sleeps, [])
+        outcomes = {
+            "http 404": http_error(404, {"status": "error", "message": "Project not found"}),
+            "empty list": ok({"projects": [], "users": {}}),
+            "other project": ok({"projects": [{"id": 5}]}),
+        }
+        for label, outcome in outcomes.items():
+            with self.subTest(label):
+                rig = make_client(self, outcome)
+                with self.assertRaises(NotFoundError) as ctx:
+                    rig.client.get_project(999)
+                self.assertIn("Project 999 not found", str(ctx.exception))
+                self.assertEqual(rig.sleeps, [])
 
 
 class S15DebugMirror(unittest.TestCase):
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.base = Path(tmp.name)
-
     def test_debug_prints_the_same_lines_as_the_trace_file(self):
-        err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            cli.main(["--debug", "whoami"], base_dir=self.base)
-        mirrored = [line for line in err.getvalue().splitlines() if line.startswith("{")]
-        (trace_file,) = (self.base / "traces").glob("*.jsonl")
-        self.assertEqual(mirrored, trace_file.read_text(encoding="utf-8").splitlines())
-        self.assertEqual([json.loads(line)["step"] for line in mirrored], ["start", "end"])
+        run = run_cli(self, ["--debug", "whoami"], ok({"username": "meric"}))
+        mirrored = [line for line in run.err.splitlines() if line.startswith("{")]
+        self.assertEqual(mirrored, trace_lines(run.base_dir))
+        self.assertEqual(
+            [json.loads(line)["step"] for line in mirrored], ["start", "http", "result", "end"]
+        )
 
     def test_without_debug_stderr_has_no_trace_lines(self):
-        err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            cli.main(["whoami"], base_dir=self.base)
-        self.assertNotIn("{", err.getvalue())
-        self.assertTrue(list((self.base / "traces").glob("*.jsonl")))  # still traced to disk
+        run = run_cli(self, ["whoami"], ok({"username": "meric"}))
+        self.assertEqual(run.err, "")
+        self.assertTrue(trace_lines(run.base_dir))  # still traced to disk
 
     def test_cli_error_message_is_masked(self):
-        def leaky_handler(args, tracer, base_dir):
-            tracer.add_secret(TOKEN)
-            raise ApiError(f"server echoed {TOKEN}")
-
-        err = io.StringIO()
-        with mock.patch.object(cli, "_not_built", lambda phase: leaky_handler):
-            with contextlib.redirect_stderr(err):
-                code = cli.main(["--debug", "whoami"], base_dir=self.base)
-        self.assertEqual(code, cli.EXIT_ERROR)
-        self.assertIn("flx: server echoed ***", err.getvalue())
-        self.assertNotIn(TOKEN, err.getvalue())
+        run = run_cli(self, ["--debug", "whoami"], http_error(500, {"message": f"server echoed {TOKEN}"}))
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertIn("flx: Freelancer returned HTTP 500: server echoed ***.", run.err)
+        self.assertNotIn(TOKEN, run.err)
 
 
 class S16TraceSteps(unittest.TestCase):
@@ -399,15 +392,12 @@ class S16TraceSteps(unittest.TestCase):
         self.assertEqual([l["step"] for l in read_trace(rig.tracer)], ["http", "error"])
 
     def test_cli_run_has_start_and_end(self):
-        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(io.StringIO()):
-            code = cli.main(["search", "n8n", "--limit", "5"], base_dir=Path(tmp))
-            (trace_file,) = (Path(tmp) / "traces").glob("*.jsonl")
-            lines = [json.loads(l) for l in trace_file.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual([l["step"] for l in lines], ["start", "end"])
+        run = run_cli(self, ["search", "n8n", "--limit", "5"], ok(SEARCH_RESULT))
+        lines = [json.loads(line) for line in trace_lines(run.base_dir)]
+        self.assertEqual([l["step"] for l in lines], ["start", "http", "result", "end"])
         self.assertEqual(len({l["run_id"] for l in lines}), 1)
         self.assertEqual(lines[0]["options"]["query"], "n8n")
-        self.assertEqual(lines[1]["exit_code"], code)
-        self.assertEqual(lines[1]["error_type"], "NotImplementedError")
+        self.assertEqual(lines[-1]["exit_code"], 0)
 
 
 class S17MalformedToken(unittest.TestCase):
