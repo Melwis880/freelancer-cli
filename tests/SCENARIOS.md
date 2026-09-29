@@ -10,7 +10,7 @@ Run all: `python -m unittest discover -s tests`
 
 | # | Scenario | Expected |
 |---|---|---|
-| 1 | Normal search | Projects parsed with id, title, link, type, budget min/max, currency, bid count, average bid, time submitted, client country, payment verified, description. Request is a GET to `projects/0.1/projects/active/` carrying the `Freelancer-OAuth-V1` header. |
+| 1 | Normal search | Projects parsed with id, title, link, type, budget min/max, currency, bid count, average bid, time submitted, client country, payment verified, description. Client country and payment status come from `owner_info` (requested with `owner_info=true`). Request is a GET to `projects/0.1/projects/active/` carrying the `Freelancer-OAuth-V1` header. |
 | 2 | Empty result | Empty list, no error; also when `result` or `projects` is missing. |
 | 3 | No token | Clear message naming `FREELANCER_TOKEN` and `.env.local`; no request is sent, for every command (exit 1). The environment variable wins over `.env.local`; a blank one falls back to the file. |
 | 4 | HTTP 401 | `AuthError` saying the token is invalid or expired; not retried; message never contains the token. |

@@ -39,18 +39,13 @@ BACKOFF_S = (1, 2, 4)  # one wait per retry after HTTP 429
 MAX_RETRY_AFTER_S = 10
 
 SEARCH_ENDPOINT = "projects/0.1/projects/active/"
-# The multi-project endpoint answers in the same shape as search (projects + users map), so one
-# call gives a project together with its owner's details.
+# The multi-project endpoint answers in the same shape as search, so one parser serves both.
 PROJECTS_ENDPOINT = "projects/0.1/projects/"
 SELF_ENDPOINT = "users/0.1/self/"
-# Full description plus the owner's country and payment status, all in the same call.
-# Parameter and field names are verified against the live API in Phase 3.
-DETAILS = {
-    "full_description": True,
-    "user_details": True,
-    "user_location_details": True,
-    "user_status": True,
-}
+# Full description, plus `owner_info` (the client's country and payment status) inside each project.
+# Checked against the live API on 2026-09-29: owner_id and the users map come back empty, so
+# owner_info is the only place these fields exist.
+DETAILS = {"full_description": True, "owner_info": True}
 
 _PROJECT_ID = re.compile(r"[0-9]{1,12}")
 

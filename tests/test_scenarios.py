@@ -94,11 +94,12 @@ class S01NormalSearch(unittest.TestCase):
         self.assertEqual(query["limit"], ["5"])
         self.assertEqual(query["offset"], ["10"])
         self.assertEqual(query["full_description"], ["true"])
+        self.assertEqual(query["owner_info"], ["true"])  # the only source of client country/payment
 
 
 class S02EmptyResult(unittest.TestCase):
     def test_no_projects_gives_an_empty_list(self):
-        rig = make_client(self, ok({"projects": [], "users": {}, "total_count": 0}))
+        rig = make_client(self, ok({"projects": [], "total_count": 0}))
         self.assertEqual(rig.client.search_projects("nothing-matches-this"), [])
         self.assertEqual(read_trace(rig.tracer)[-1]["count"], 0)
 
@@ -222,14 +223,14 @@ class S07BadData(unittest.TestCase):
     def test_wrong_types_come_back_empty(self):
         raw = {
             "id": "not-a-number",
-            "owner_id": 7,
+            "owner_info": {"country": "Germany", "status": None},
             "title": 42,
             "budget": "cheap",
             "currency": None,
             "bid_stats": {"bid_count": True, "bid_avg": "high"},
             "time_submitted": "yesterday",
         }
-        rig = make_client(self, ok({"projects": [raw, "junk", None], "users": ["not", "a", "map"]}))
+        rig = make_client(self, ok({"projects": [raw, "junk", None]}))
         (only,) = rig.client.search_projects("n8n")
         self.assertEqual(only, models.Project(*[None] * 13))
 
@@ -334,7 +335,7 @@ class S14NotFound(unittest.TestCase):
     def test_unknown_project_gives_a_clear_message(self):
         outcomes = {
             "http 404": http_error(404, {"status": "error", "message": "Project not found"}),
-            "empty list": ok({"projects": [], "users": {}}),
+            "empty list": ok({"projects": []}),
             "other project": ok({"projects": [{"id": 5}]}),
         }
         for label, outcome in outcomes.items():

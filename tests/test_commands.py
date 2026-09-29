@@ -38,8 +38,8 @@ def query_of(request):
     return urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
 
 
-def result_with(*projects, users=None):
-    return {"projects": list(projects), "users": users or {}}
+def result_with(*projects):
+    return {"projects": list(projects)}
 
 
 def screen_width(text):
@@ -141,7 +141,7 @@ class S22Table(unittest.TestCase):
     def test_narrow_terminal_hides_the_least_useful_columns_first(self):
         raw = copy.deepcopy(SEARCH_RESULT)
         raw["projects"][0].update(id=39876543, budget={"minimum": 1500, "maximum": 3000})
-        raw["users"]["7"]["location"]["country"]["name"] = "United Kingdom"
+        raw["projects"][0]["owner_info"]["country"]["name"] = "United Kingdom"
         expected = {
             120: ["ID", "AGE", "BUDGET", "BIDS", "AVG", "COUNTRY", "VERIFIED", "TITLE"],
             80: ["ID", "AGE", "BUDGET", "BIDS", "VERIFIED", "TITLE"],
@@ -208,6 +208,7 @@ class S24ProjectDetail(unittest.TestCase):
             self.assertIn(expected, run.out)
         (request,) = run.opener.requests
         self.assertEqual(query_of(request)["projects[]"], ["101"])
+        self.assertEqual(query_of(request)["owner_info"], ["true"])
 
     def test_missing_fields_do_not_break_the_view(self):
         run = run_cli(self, ["project", "5"], ok(result_with({"id": 5})))

@@ -27,17 +27,15 @@ class Project:
 
 
 def parse_search(result: Any) -> list[Project]:
-    """Projects from a /projects/active/ result, owner details joined in from its `users` map."""
+    """Projects from a `result` holding a `projects` list (search and multi-project calls)."""
     projects = _get(result, "projects")
     if not isinstance(projects, list):
         return []
-    users = _get(result, "users")
-    return [parse_project(raw, users) for raw in projects if isinstance(raw, dict)]
+    return [parse_project(raw) for raw in projects if isinstance(raw, dict)]
 
 
-def parse_project(raw: Any, users: Any = None) -> Project:
-    owner_id = _int(_get(raw, "owner_id"))
-    owner = _get(users, str(owner_id)) if owner_id is not None else None
+def parse_project(raw: Any) -> Project:
+    owner = _get(raw, "owner_info")  # only sent when asked for with owner_info=true
     seo_url = _str(_get(raw, "seo_url"))
     return Project(
         id=_int(_get(raw, "id")),
@@ -50,7 +48,7 @@ def parse_project(raw: Any, users: Any = None) -> Project:
         bid_count=_int(_get(raw, "bid_stats", "bid_count")),
         bid_avg=_num(_get(raw, "bid_stats", "bid_avg")),
         time_submitted=_int(_get(raw, "time_submitted")),
-        client_country=_str(_get(owner, "location", "country", "name")),
+        client_country=_str(_get(owner, "country", "name")),
         payment_verified=_bool(_get(owner, "status", "payment_verified")),
         description=_str(_get(raw, "description")) or _str(_get(raw, "preview_description")),
     )

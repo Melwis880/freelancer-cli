@@ -59,12 +59,13 @@ Notlar: tabloda TÜR sütunu yok (saatlik bütçe `/h` ile görünür, JSON'da `
 **Faz 2 tamam (2026-09-29): 76 test geçiyor; 11 kasıtlı bozmanın 11'i de yakalandı (scratchpad kopyasında).**
 
 ## Faz 3 - Gerçek erişim
-- [ ] Freelancer geliştirici panelinde uygulama (sadece okuma yetkisi)
-- [ ] Token yolu: panelden hazır token mı, gerekirse `flx login` (OAuth) mı
-- [ ] Token'ı `~/Projects/freelancer-cli/.env.local` dosyasına ben eklerim (sohbete asla yapıştırılmaz)
-- [ ] Canlı kontrol: `flx whoami`, `flx scan`; trace ile istekler doğrulanır
-- [ ] Arama parametre ve alan adlarını canlı yanıtla doğrula (`user_location_details`, `user_status`, `seo_url`, `location.country.name`, `status.payment_verified`, `projects[]`, en yüksek `limit`)
+- [x] Freelancer geliştirici panelinde uygulama (sadece okuma yetkisi)
+- [x] Token yolu: panelden hazır token mı, gerekirse `flx login` (OAuth) mı -> panel token'ı yetti, `flx login` gerekmedi
+- [x] Token'ı `~/Projects/freelancer-cli/.env.local` dosyasına ben eklerim (sohbete asla yapıştırılmaz)
+- [x] Canlı kontrol: `flx whoami`, `flx scan`; trace ile istekler doğrulanır (2026-09-29: 4 komut + 2x `scan --only-new` hepsi 200, 429 yok, ikinci tarama "No new projects.")
+- [x] Arama parametre ve alan adlarını canlı yanıtla doğrula. 2026-09-29: `owner_id` ve `users` boş geliyor; müşteri ülkesi/ödeme doğrulaması sadece `owner_info=true` ile `owner_info.country.name` / `owner_info.status.payment_verified` alanlarında (düzeltildi). `projects[]` ucu çalışıyor. `project` komutunda da `owner_info` dolu geliyor (canlıda görüldü). Açık: en yüksek `limit` (şimdilik 100 varsayıldı)
 Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen yolu gösteriyor.
+**Faz 3 tamam (2026-09-29).**
 
 ## Faz 4 - Dokümantasyon
 - [ ] Başkaları için ayar yedeği: token/ayarlar `~/.config/flx/` altında da aranır

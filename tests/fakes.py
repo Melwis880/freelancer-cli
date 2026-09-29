@@ -22,7 +22,6 @@ SEARCH_RESULT = {
     "projects": [
         {
             "id": 101,
-            "owner_id": 7,
             "title": "Build an n8n workflow",
             "seo_url": "n8n/build-an-n8n-workflow",
             "type": "fixed",
@@ -32,10 +31,10 @@ SEARCH_RESULT = {
             "time_submitted": 1790000000,
             "description": "Connect a CRM to Slack with n8n.",
             "preview_description": "Connect a CRM...",
+            "owner_info": {"country": {"name": "Germany"}, "status": {"payment_verified": True}},
         },
         {
             "id": 102,
-            "owner_id": 8,
             "title": "Python scraper",
             "seo_url": "python/python-scraper",
             "type": "hourly",
@@ -44,12 +43,9 @@ SEARCH_RESULT = {
             "bid_stats": {"bid_count": 3, "bid_avg": 20},
             "time_submitted": 1790000500,
             "preview_description": "Scrape product pages.",
+            "owner_info": {"country": {"name": "Canada"}, "status": {"payment_verified": False}},
         },
     ],
-    "users": {
-        "7": {"id": 7, "location": {"country": {"name": "Germany"}}, "status": {"payment_verified": True}},
-        "8": {"id": 8, "location": {"country": {"name": "Canada"}}, "status": {"payment_verified": False}},
-    },
     "total_count": 2,
 }
 
