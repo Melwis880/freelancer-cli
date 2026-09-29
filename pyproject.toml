@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flx"
+version = "0.1.0.dev0"
+description = "Read-only CLI that finds AI and automation jobs on Freelancer.com"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+flx = "flx.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

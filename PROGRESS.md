@@ -7,12 +7,14 @@ Durum: [ ] yapılacak, [x] bitti
 
 ## Faz 0 - Kurulum
 - [x] `~/Projects/freelancer-cli`, `git init`, `.gitignore` (`.env*`, `traces/`, `__pycache__/`, `.venv/`)
-- [ ] Paket iskeleti: `src/flx/`, `flx` komutunu tanımlayan `pyproject.toml`, `python -m flx`
-- [ ] CLI mimarisi: standart `argparse` ile alt komutlar (`whoami`, `search`, `project`, `scan`)
-- [ ] Gelecek özellikler için yer tutucu: `auth` modülünde `flx login` -> `NotImplementedError`
-- [ ] Test altyapısı: standart `unittest`, `tests/`
+- [x] Paket iskeleti: `src/flx/`, `flx` komutunu tanımlayan `pyproject.toml`, `python -m flx`
+- [x] CLI mimarisi: standart `argparse` ile alt komutlar (`whoami`, `search`, `project`, `scan`)
+- [x] Gelecek özellikler için yer tutucu: `auth` modülünde `flx login` -> `NotImplementedError`
+- [x] Test altyapısı: standart `unittest`, `tests/`
 - [x] PROGRESS.md, DECISIONS.md, CLAUDE.md yerinde
 Bitti sayılır: `python -m flx --help` tüm alt komutları gösteriyor, `python -m unittest` hatasız.
+Not: kurulmadan önce `PYTHONPATH=src python -m flx ...`; kurulumdan sonra (`pip install -e .`) sadece `flx ...`.
+**Faz 0 tamam (2026-09-29): 5 test geçiyor, komutlar henüz 'not built yet' ile dürüstçe hata veriyor.**
 
 ## Faz 1 - Güvenli çekirdek, trace ve senaryolar
 - [ ] Sadece GET atan HTTP istemcisi; başka istek türü hata verir
