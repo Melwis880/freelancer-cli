@@ -77,10 +77,11 @@ Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen y
 Bitti sayılır: projeyi bilmeyen biri README ile 5 dakikada `flx scan` çalıştırabiliyor.
 
 ## Faz 5 - Yayın
+- [x] Ön temizlik (2026-09-29): repo kökündeki `traces/`, `state/`, `.env.local`, `keywords.txt` silindi (Meriç onayı); token artık sadece `~/.config/flx/.env.local`.
 - [ ] Temiz oturumda `security-audit` -> `security.md`
 - [ ] Temiz oturumda `optimize` -> `OPTIMIZATIONS.md`
 - [ ] Önemli bulguları düzelt, tüm testleri yeniden çalıştır
-- [ ] CI: `.github/workflows/test.yml` her gönderimde tüm testleri çalıştırır
+- [x] CI: `.github/workflows/test.yml` her gönderimde tüm testleri çalıştırır (Python 3.10-3.13 + `pip install -e .`; GitHub'a gönderilince ilk kez gerçekten koşacak)
 - [ ] `v0.1.0` etiketi
 - [ ] Sadece benim açık "evet"imden sonra: GitHub reposu ve gönderim
 - [ ] İsteğe bağlı: vaka notları Sosyal Medya ajanına ("build breakdown" postu)
