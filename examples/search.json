@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "command": "search",
+  "generated_at": "2026-09-21T16:13:20Z",
+  "query": "automation",
+  "limit": 3,
+  "offset": 0,
+  "count": 3,
+  "projects": [
+    {
+      "id": 40000003,
+      "title": "n8n workflow to sync CRM leads into Slack",
+      "url": "https://www.freelancer.com/projects/python/n8n-workflow-to-sync-crm-leads-into-slack",
+      "type": "fixed",
+      "budget_min": 250.0,
+      "budget_max": 750.0,
+      "currency": "USD",
+      "bid_count": 18,
+      "bid_avg": 412.5,
+      "time_submitted": "2026-09-21T15:13:20Z",
+      "client_country": "Germany",
+      "payment_verified": true,
+      "description": "We use HubSpot and Slack. Build an n8n workflow that posts every new qualified lead to a Slack channel.\n\nPlease share one similar workflow you built."
+    },
+    {
+      "id": 40000002,
+      "title": "LangChain RAG assistant over internal PDFs",
+      "url": "https://www.freelancer.com/projects/python/langchain-rag-assistant-over-internal-pdfs",
+      "type": "fixed",
+      "budget_min": 1500.0,
+      "budget_max": 3000.0,
+      "currency": "EUR",
+      "bid_count": 41,
+      "bid_avg": 2210.0,
+      "time_submitted": "2026-09-21T11:13:20Z",
+      "client_country": "Netherlands",
+      "payment_verified": true,
+      "description": "RAG over ~2,000 PDFs."
+    },
+    {
+      "id": 40000001,
+      "title": "Python web scraping for product prices",
+      "url": "https://www.freelancer.com/projects/python/python-web-scraping-for-product-prices",
+      "type": "hourly",
+      "budget_min": 15.0,
+      "budget_max": 25.0,
+      "currency": "USD",
+      "bid_count": 7,
+      "bid_avg": 20.0,
+      "time_submitted": "2026-09-20T13:13:20Z",
+      "client_country": "Canada",
+      "payment_verified": false,
+      "description": "Daily price scrape of 3 shops."
+    }
+  ]
+}

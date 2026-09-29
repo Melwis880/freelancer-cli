@@ -1,0 +1,16 @@
+$ flx project 40000003
+n8n workflow to sync CRM leads into Slack
+
+ID      40000003
+Link    https://www.freelancer.com/projects/python/n8n-workflow-to-sync-crm-leads-into-slack
+Type    fixed
+Budget  250-750 USD
+Bids    18 (average 412.50 USD)
+Posted  2026-09-21 15:13 UTC (1h ago)
+Client  Germany, payment verified
+
+Description
+We use HubSpot and Slack. Build an n8n workflow that posts every new qualified lead to a
+Slack channel.
+
+Please share one similar workflow you built.
