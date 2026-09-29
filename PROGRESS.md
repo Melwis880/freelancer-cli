@@ -86,7 +86,7 @@ Bitti sayılır: projeyi bilmeyen biri README ile 5 dakikada `flx scan` çalış
 - [x] Commit e-postası (2026-09-29, Meriç kararı): 15 commit `git filter-branch` ile GitHub noreply adresine çevrildi (tarihler ve dosya ağacı aynı); repo-yerel `user.email` artık noreply. Eski adres sadece yerel yedek `refs/original/` ve reflog'da duruyor; normal push'la gitmez.
 - [x] CI: `.github/workflows/test.yml` her gönderimde tüm testleri çalıştırır (Python 3.10-3.13 + `pip install -e .`; GitHub'a gönderilince ilk kez gerçekten koşacak)
 - [x] `v0.1.0` etiketi (2026-09-29, açıklamalı, `chore(release): 0.1.0` commit'inde; 102 test geçiyor, 12/12 kasıtlı bozma yakalandı)
-- [ ] Sadece benim açık "evet"imden sonra: GitHub reposu ve gönderim
+- [x] Sadece benim açık "evet"imden sonra: GitHub reposu ve gönderim (2026-09-29, Meriç "EVET"): `https://github.com/Melwis880/freelancer-cli`, `main` + `v0.1.0` gönderildi. Öncesinde yerel `refs/original/` ve reflog silindi, `git gc --prune=now`; eski e-posta hiçbir git nesnesinde yok. İlk CI koşusu Python 3.10-3.13'te başarılı. `pip install -e .` yenilendi (pip ve `flx --version` 0.1.0).
 - [ ] İsteğe bağlı: vaka notları Sosyal Medya ajanına ("build breakdown" postu)
 Bitti sayılır: herkese açık repo README ve çalışan CI ile yayında.
 
