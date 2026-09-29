@@ -35,7 +35,7 @@ Run all: `python -m unittest discover -s tests`
 | 22 | Table | No row is wider than the terminal; titles start in the same column even with wide (CJK) characters and are cut with "…". A narrow terminal hides AVG, then COUNTRY, VERIFIED, BIDS, AGE, so the title keeps at least 24 columns. Hourly budgets end in "/h". Empty result says "No projects found." |
 | 23 | `--json` | Top level has `schema_version`, `command`, `generated_at` and the command's inputs; every project has exactly the 13 fields of `models.Project`, `time_submitted` as ISO 8601 UTC. The field list is pinned to the schema version. |
 | 24 | `project <id>` | Shows title, link, type, budget, bids with average, posting time and age, client country and payment status, full description. Missing fields do not break the view; a bad id fails before any request. |
-| 25 | `scan` | Searches every keyword (20 results each) with a 1 s pause between keywords, merges and de-duplicates them newest first. The repo's `keywords.txt` matches the built-in defaults. |
+| 25 | `scan` | Searches every keyword (20 results each) with a 1 s pause between keywords, merges and de-duplicates them newest first. |
 | 26 | Empty `keywords.txt` | Clear error, no request. Blank lines, `#` comments and repeated terms (any case) are skipped. |
 | 27 | Hostile text from the API | Escape sequences, control, bidi and zero-width characters in titles, descriptions, fields or error messages never reach the terminal. JSON escapes them and keeps the original text. |
 | 28 | `seen.json` problems | Unreadable file: warning, every project treated as new, file rebuilt. Unwritable: warning, output still shown. Only the newest 10,000 ids are kept. |

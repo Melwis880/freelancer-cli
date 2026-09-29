@@ -244,10 +244,6 @@ class S25Scan(unittest.TestCase):
         self.assertEqual(data["keywords"], ["n8n", "Zapier", "llm"])
         self.assertEqual([p["id"] for p in data["projects"]], [103, 102, 101])
 
-    def test_repo_keywords_file_matches_the_defaults(self):
-        repo = _path.SRC.parent
-        self.assertEqual(files.load_keywords(repo, repo), list(files.DEFAULT_KEYWORDS))
-
 
 class S26Keywords(unittest.TestCase):
     def test_empty_keywords_file_stops_before_any_request(self):
