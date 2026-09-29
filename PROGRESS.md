@@ -73,7 +73,7 @@ Bitti sayılır: canlı `flx scan` gerçek ilanlar getiriyor ve trace beklenen y
 - [x] İngilizce README: ne ve neden, kurulum, token, kullanım, JSON şeması, trace, "sadece okuma"
 - [x] LICENSE (MIT); `pyproject.toml` SPDX lisans alanına geçti, `pip install -e .` hatasız (2026-09-29)
 - [x] Kişisel veri içermeyen örnek çıktı (`examples/`, uydurma veriyle gerçek çıktı koduyla üretildi)
-- [ ] Vaka notları: Hangi sorunu çözüyor? Nasıl çalışıyor? Somut sonucu ne?
+- [x] Vaka notları: Hangi sorunu çözüyor? Nasıl çalışıyor? Somut sonucu ne? (`CASE_STUDY.md`, İngilizce)
 Bitti sayılır: projeyi bilmeyen biri README ile 5 dakikada `flx scan` çalıştırabiliyor.
 
 ## Faz 5 - Yayın
