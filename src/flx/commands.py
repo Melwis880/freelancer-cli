@@ -14,11 +14,14 @@ from typing import Any
 from flx import files, models, render
 from flx.auth import load_token
 from flx.client import Client
-from flx.errors import BadResponseError, InvalidInputError
+from flx.errors import ApiError, BadResponseError, FlxError, InvalidInputError, NetworkError
 from flx.trace import Tracer
 
 SCAN_LIMIT = 20  # results per keyword
 SCAN_PAUSE_S = 1  # between keywords, to go easy on the API and stay clear of HTTP 429
+# A keyword that fails with one of these is skipped and the scan goes on. Anything else (bad token,
+# rate limit that outlasted its retries) would fail for every keyword, so it stops the scan.
+SKIPPABLE = (NetworkError, ApiError, BadResponseError)
 
 
 @dataclass
@@ -77,16 +80,24 @@ def scan(args: Namespace, ctx: Context) -> int:
     client = ctx.client()
     keywords = files.load_keywords(ctx.cwd, ctx.config)
     seen = _load_seen(ctx) if args.only_new else set()
-    batches = []
+    batches, failed = [], []
     for i, keyword in enumerate(keywords):
         if i:
             ctx.sleep(SCAN_PAUSE_S)
-        batches.append(client.search_projects(keyword, limit=SCAN_LIMIT))
+        try:
+            batches.append(client.search_projects(keyword, limit=SCAN_LIMIT))
+        except SKIPPABLE as exc:
+            failed.append(keyword)
+            ctx.warn(f"keyword {keyword!r} failed ({exc}); skipping it.")
+    if not batches:
+        raise FlxError(f"Every keyword failed ({len(failed)} of {len(keywords)}); nothing to show.")
     projects = models.merge_projects(batches)
     shown = [p for p in projects if p.id not in seen]
-    ctx.tracer.log("scan", keywords=len(keywords), found=len(projects), shown=len(shown))
+    ctx.tracer.log(
+        "scan", keywords=len(keywords), failed=len(failed), found=len(projects), shown=len(shown)
+    )
 
-    meta = {"keywords": keywords, "only_new": args.only_new}
+    meta = {"keywords": keywords, "failed_keywords": failed, "only_new": args.only_new}
     _print_list(shown, args, ctx, meta, empty="No new projects." if args.only_new else "No projects found.")
     if args.only_new:
         _save_seen(ctx, seen | {p.id for p in projects if p.id is not None})

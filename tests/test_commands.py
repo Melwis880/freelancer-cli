@@ -10,12 +10,13 @@ import json
 import stat
 import unicodedata
 import unittest
+import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
 import _path  # noqa: F401
-from fakes import NOW, SEARCH_RESULT, TOKEN, http_error, ok, run_cli, temp_dir
+from fakes import NOW, SEARCH_RESULT, TOKEN, FakeResponse, http_error, ok, run_cli, temp_dir, trace_lines
 
 from flx import SCHEMA_VERSION, cli, files, models, render
 
@@ -179,7 +180,7 @@ class S23Json(unittest.TestCase):
 
     def test_field_list_is_pinned_to_the_schema_version(self):
         # Changing a field? Bump SCHEMA_VERSION in src/flx/__init__.py and update both lines here.
-        self.assertEqual(SCHEMA_VERSION, 1)
+        self.assertEqual(SCHEMA_VERSION, 2)
         self.assertEqual([f.name for f in dataclasses.fields(models.Project)], PROJECT_FIELDS)
 
     def test_project_and_scan_json(self):
@@ -190,6 +191,7 @@ class S23Json(unittest.TestCase):
 
         scan = json.loads(run_cli(self, ["scan", "--json"], ok(SEARCH_RESULT), keywords="n8n\n").out)
         self.assertEqual(scan["keywords"], ["n8n"])
+        self.assertEqual(scan["failed_keywords"], [])
         self.assertIs(scan["only_new"], False)
         self.assertEqual([p["id"] for p in scan["projects"]], [102, 101])
 
@@ -376,6 +378,53 @@ class S30ConfigDir(unittest.TestCase):
         self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "/x/cfg", "HOME": "/h"}), Path("/x/cfg/flx"))
         self.assertEqual(files.config_dir({"HOME": "/h"}), Path("/h/.config/flx"))
         self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "relative", "HOME": "/h"}), Path("/h/.config/flx"))
+
+
+class S31PartialScan(unittest.TestCase):
+    KEYWORDS = "n8n\nzapier\ncrewai\n"
+    FIRST = result_with({"id": 1, "title": "n8n job", "time_submitted": 100})
+    THIRD = result_with({"id": 3, "title": "crewai job", "time_submitted": 300})
+
+    def test_a_failing_keyword_is_skipped_and_the_rest_is_shown(self):
+        failures = {
+            "timeout": TimeoutError("timed out"),
+            "network": urllib.error.URLError("Name or service not known"),
+            "server error": http_error(503),
+            "broken body": FakeResponse(b"<html>"),
+        }
+        for label, failure in failures.items():
+            with self.subTest(label):
+                run = run_cli(self, ["scan", "--json"], ok(self.FIRST), failure, ok(self.THIRD), keywords=self.KEYWORDS)
+                self.assertEqual(run.code, 0)
+                data = json.loads(run.out)
+                self.assertEqual([p["id"] for p in data["projects"]], [3, 1])
+                self.assertEqual(data["failed_keywords"], ["zapier"])
+                self.assertIn("keyword 'zapier' failed", run.err)
+                self.assertEqual(run.sleeps, [1, 1])  # the pause still happens around the failure
+
+    def test_failure_is_traced(self):
+        run = run_cli(self, ["scan"], ok(self.FIRST), TimeoutError(), ok(self.THIRD), keywords=self.KEYWORDS)
+        lines = [json.loads(line) for line in trace_lines(run.config)]
+        warning = next(l for l in lines if l["step"] == "warning")
+        self.assertIn("zapier", warning["message"])
+        summary = next(l for l in lines if l["step"] == "scan")
+        self.assertEqual((summary["failed"], summary["found"]), (1, 2))
+
+    def test_only_new_marks_only_what_was_actually_fetched(self):
+        run = run_cli(self, ["scan", "--only-new"], ok(self.FIRST), TimeoutError(), ok(self.THIRD), keywords=self.KEYWORDS)
+        self.assertEqual(files.load_seen(run.config), {1, 3})
+
+    def test_every_keyword_failing_is_an_error(self):
+        run = run_cli(self, ["scan"], TimeoutError(), TimeoutError(), TimeoutError(), keywords=self.KEYWORDS)
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertEqual(run.out, "")
+        self.assertIn("Every keyword failed (3 of 3)", run.err)
+
+    def test_bad_token_still_stops_the_scan_at_once(self):
+        run = run_cli(self, ["scan"], ok(self.FIRST), http_error(401), keywords=self.KEYWORDS)
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertEqual(run.out, "")
+        self.assertEqual(len(run.opener.requests), 2)  # crewai was never searched
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ flx whoami        # Token works. Logged in as <your username>.
 | `flx whoami` | Checks the token; prints your username only. |
 | `flx search "<text>" [--limit N] [--offset N] [--json]` | Searches active projects. `--limit` 1-100, default 20. |
 | `flx project <id> [--json]` | One project in full: link, budget, bids, client country and payment status, description. |
-| `flx scan [--only-new] [--json]` | Searches every term in `keywords.txt` (20 results each, 1 s apart), merged, de-duplicated, newest first. |
+| `flx scan [--only-new] [--json]` | Searches every term in `keywords.txt` (20 results each, 1 s apart), merged, de-duplicated, newest first. A keyword that fails (network, timeout, server error) is skipped with a warning; the rest is still shown. |
 
 `--only-new` shows only projects that no earlier `--only-new` scan has shown. Seen project ids
 are kept in `seen.json`; a plain `scan` never touches it.
@@ -83,7 +83,7 @@ See [`examples/`](examples/) for full sample output. It uses made-up data.
 
 ## JSON output
 
-Every `--json` output has a `schema_version` (currently `1`). It is bumped whenever a field
+Every `--json` output has a `schema_version` (currently `2`). It is bumped whenever a field
 changes, so programs reading it can detect breaking changes.
 
 ```json
@@ -97,7 +97,7 @@ changes, so programs reading it can detect breaking changes.
 }
 ```
 
-`scan` has `keywords` and `only_new` instead of `query`/`limit`/`offset`. `project` has a
+`scan` has `keywords`, `failed_keywords` and `only_new` instead of `query`/`limit`/`offset`. `project` has a
 single `project` instead of `projects`/`count`.
 
 Each project:
