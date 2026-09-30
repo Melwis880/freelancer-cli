@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -106,11 +107,17 @@ def read_small(path: Path) -> str:
     Raises FileNotFoundError if it is missing, OSError if it cannot be read, and ValueError if it
     is not a regular file, is over MAX_FILE_BYTES or is not UTF-8.
     """
-    path = Path(path)
-    if path.exists() and not path.is_file():
-        raise ValueError("not a regular file")
-    with path.open("rb") as fh:
-        data = fh.read(MAX_FILE_BYTES + 1)
+    # Check the type of the file actually opened, not of the path beforehand: a FIFO swapped in
+    # between a check and the open would block a plain open forever. O_NONBLOCK lets a FIFO open
+    # at once so fstat can refuse it.
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("not a regular file")
+        with os.fdopen(fd, "rb", closefd=False) as fh:
+            data = fh.read(MAX_FILE_BYTES + 1)
+    finally:
+        os.close(fd)
     if len(data) > MAX_FILE_BYTES:
         raise ValueError(f"larger than {MAX_FILE_BYTES // 1024} KiB")
     try:

@@ -9,12 +9,14 @@ import dataclasses
 import json
 import os
 import stat
+import threading
 import unicodedata
 import unittest
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 import _path  # noqa: F401
 from fakes import (
@@ -669,6 +671,44 @@ class S31PartialScan(unittest.TestCase):
         self.assertEqual(run.code, cli.EXIT_ERROR)
         self.assertEqual(run.out, "")
         self.assertEqual(len(run.opener.requests), 2)  # crewai was never searched
+
+
+@unittest.skipUnless(hasattr(os, "mkfifo"), "needs FIFOs")
+class S39SwappedFile(unittest.TestCase):
+    """A file checked as regular but swapped for a FIFO before the read must not hang flx."""
+
+    def read_in_thread(self, path):
+        outcome = {}
+
+        def run():
+            try:
+                outcome["text"] = files.read_small(path)
+            except Exception as exc:  # noqa: BLE001 - the test inspects it
+                outcome["error"] = exc
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=2)
+        if worker.is_alive():  # unblock a reader stuck in open() so the thread can end
+            os.close(os.open(path, os.O_WRONLY | os.O_NONBLOCK))
+            self.fail("read_small blocked on a FIFO")
+        return outcome
+
+    def test_fifo_that_passed_a_path_check_is_refused_without_blocking(self):
+        path = temp_dir(self) / ".env.local"
+        os.mkfifo(path)
+        # The path check says "regular file", as it would have just before the swap.
+        with mock.patch.object(Path, "is_file", return_value=True), mock.patch.object(
+            Path, "exists", return_value=True
+        ):
+            outcome = self.read_in_thread(path)
+        self.assertIsInstance(outcome.get("error"), ValueError)
+        self.assertEqual(str(outcome["error"]), "not a regular file")
+
+    def test_regular_file_is_still_read(self):
+        path = temp_dir(self) / files.KEYWORDS_FILE
+        path.write_text("n8n\n", encoding="utf-8")
+        self.assertEqual(self.read_in_thread(path), {"text": "n8n\n"})
 
 
 if __name__ == "__main__":
