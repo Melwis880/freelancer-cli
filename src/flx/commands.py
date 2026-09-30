@@ -93,6 +93,7 @@ def scan(args: Namespace, ctx: Context) -> int:
     searches = [("keyword", k, lambda k=k: client.search_projects(k, limit=SCAN_LIMIT)) for k in keywords]
     searches += [("skill", s, lambda s=s: client.search_skill(s, limit=SCAN_LIMIT)) for s in skills]
     batches: list[list[models.Project]] = []
+    sources: list[tuple[str, Any]] = []  # (kind, term) of each batch
     failed: dict[str, list] = {"keyword": [], "skill": []}
     started = None
     for kind, term, run in searches:
@@ -103,6 +104,7 @@ def scan(args: Namespace, ctx: Context) -> int:
         started = ctx.monotonic()
         try:
             batches.append(run())
+            sources.append((kind, term))
         except SKIPPABLE as exc:
             failed[kind].append(term)
             ctx.warn(f"{kind} {term!r} failed ({exc}); skipping it.")
@@ -117,6 +119,7 @@ def scan(args: Namespace, ctx: Context) -> int:
         failed=len(failed["keyword"]) + len(failed["skill"]),
         found=len(projects),
         shown=len(shown),
+        **_new_by_term(sources, batches),
     )
 
     meta = {
@@ -146,6 +149,25 @@ def skills(args: Namespace, ctx: Context) -> int:
     else:
         print(f"No skills match {text!r}.")
     return 0
+
+
+def _new_by_term(sources: list[tuple[str, Any]], batches: list[list[models.Project]]) -> dict:
+    """How many projects each term added that no earlier term had (trace only; sums to `found`).
+
+    Order-dependent: a project two terms share counts for the first one. A term near 0 on every
+    run is a candidate for dropping from the list.
+    """
+    counts: dict[str, dict[str, int]] = {"new_by_keyword": {}, "new_by_skill": {}}
+    seen: set[int] = set()
+    for (kind, term), batch in zip(sources, batches):
+        new = 0
+        for project in batch:
+            if project.id not in seen:  # None is never added, so id-less projects always count
+                new += 1
+            if project.id is not None:
+                seen.add(project.id)
+        counts[f"new_by_{kind}"][str(term)] = new
+    return counts
 
 
 def _print_list(projects, args, ctx: Context, meta: dict, *, empty: str) -> None:

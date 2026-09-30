@@ -711,5 +711,25 @@ class S39SwappedFile(unittest.TestCase):
         self.assertEqual(self.read_in_thread(path), {"text": "n8n\n"})
 
 
+class S40ScanContributionTrace(unittest.TestCase):
+    def test_trace_counts_the_projects_each_term_added(self):
+        run = run_cli(
+            self, ["scan", "--json"],
+            ok(SEARCH_RESULT),  # n8n: 101, 102
+            ok(result_with({"id": 101}, {"id": 301}, {"id": 301})),  # zapier: one repeat, one new twice
+            http_error(503),  # skill 95 fails, so it has no count
+            ok(result_with({"id": 102}, {"title": "no id"})),  # skill 3028: a repeat and an id-less project
+            keywords="n8n\nzapier\n", skills="95\n3028\n",
+        )
+        self.assertEqual(run.code, 0)
+        (scan,) = [json.loads(line) for line in trace_lines(run.config) if json.loads(line)["step"] == "scan"]
+        self.assertEqual(scan["new_by_keyword"], {"n8n": 2, "zapier": 1})
+        self.assertEqual(scan["new_by_skill"], {"3028": 1})
+        self.assertEqual(sum(scan["new_by_keyword"].values()) + sum(scan["new_by_skill"].values()), scan["found"])
+        data = json.loads(run.out)
+        self.assertEqual(data["count"], scan["found"])
+        self.assertNotIn("new_by_keyword", data)  # trace only; the JSON output is unchanged
+
+
 if __name__ == "__main__":
     unittest.main()
