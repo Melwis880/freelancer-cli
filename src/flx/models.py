@@ -47,7 +47,7 @@ def parse_project(raw: Any) -> Project:
     return Project(
         id=_int(_get(raw, "id")),
         title=_str(_get(raw, "title")),
-        url=PROJECT_URL.format(seo_url=seo_url) if seo_url else None,
+        url=PROJECT_URL.format(seo_url=seo_url) if _safe_path(seo_url) else None,
         type=_str(_get(raw, "type")),
         budget_min=_num(_get(raw, "budget", "minimum")),
         budget_max=_num(_get(raw, "budget", "maximum")),
@@ -92,6 +92,20 @@ def _skill_names(jobs: Any) -> tuple[str, ...] | None:
     if not isinstance(jobs, list):
         return None
     return tuple(name for name in (_str(_get(job, "name")) for job in jobs) if name)
+
+
+def _safe_path(seo_url: str | None) -> bool:
+    """True if `seo_url` can only name a page under /projects/ on freelancer.com.
+
+    Each segment is letters, digits and `-_.~`: no `?`, `#`, `%`, `@`, `\\`, spaces or controls that
+    could change what the link points to, and no empty, `.` or `..` segment that climbs out.
+    """
+    if not seo_url:
+        return False
+    return all(
+        segment not in ("", ".", "..") and all(c.isalnum() or c in "-_.~" for c in segment)
+        for segment in seo_url.split("/")
+    )
 
 
 def _get(data: Any, *keys: str) -> Any:

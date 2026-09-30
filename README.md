@@ -112,7 +112,7 @@ Each project:
 |---|---|---|
 | `id` | int | |
 | `title` | string | |
-| `url` | string | Link to the job on freelancer.com |
+| `url` | string | Link to the job on freelancer.com; `null` if the path Freelancer sent could point elsewhere |
 | `type` | string | `fixed` or `hourly` |
 | `budget_min`, `budget_max` | number | In `currency` |
 | `currency` | string | e.g. `USD` |

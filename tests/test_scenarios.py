@@ -549,5 +549,36 @@ class S20TraceUnwritable(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
 
 
+class S37ProjectLink(unittest.TestCase):
+    def test_link_is_built_from_a_plain_seo_url(self):
+        for seo_url in ("python/n8n-workflow-to-sync-crm-leads", "php/Website-Development-40012345", "a/b_c.d~e"):
+            with self.subTest(seo_url):
+                project = models.parse_project({"id": 1, "seo_url": seo_url})
+                self.assertEqual(project.url, "https://www.freelancer.com/projects/" + seo_url)
+
+    def test_seo_url_that_could_change_the_target_gives_no_link(self):
+        for seo_url in (
+            "../../users/login",
+            "python/../../evil",
+            "./x",
+            "//evil.example",
+            "/python/x",
+            "python/x/",
+            "x?next=https://evil.example",
+            "x#frag",
+            "x%2F..%2Fevil",
+            "@evil.example",
+            "x\\..\\evil",
+            "x y",
+            "x\ny",
+            "x:y",
+            "x\u202ey",
+        ):
+            with self.subTest(seo_url):
+                project = models.parse_project({"id": 1, "title": "t", "seo_url": seo_url})
+                self.assertIsNone(project.url)
+                self.assertEqual(project.title, "t")  # the rest of the project is kept
+
+
 if __name__ == "__main__":
     unittest.main()
