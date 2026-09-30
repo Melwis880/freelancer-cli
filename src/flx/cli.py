@@ -63,7 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(handler=commands.project)
 
-    p = sub.add_parser("scan", help="search every keyword in keywords.txt, merged and de-duplicated")
+    p = sub.add_parser(
+        "scan", help="search every keyword in keywords.txt and skill in skills.txt, merged and de-duplicated"
+    )
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.add_argument(
         "--only-new",
@@ -71,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="show only projects no earlier --only-new scan has shown (kept in seen.json)",
     )
     p.set_defaults(handler=commands.scan)
+
+    p = sub.add_parser("skills", help="find Freelancer skill ids by name, for skills.txt")
+    p.add_argument("name", help='part of a skill name, e.g. "agent"')
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+    p.set_defaults(handler=commands.skills)
 
     return parser
 

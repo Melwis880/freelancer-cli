@@ -17,12 +17,12 @@ from flx.client import Client
 from flx.errors import ApiError, BadResponseError, FlxError, InvalidInputError, NetworkError
 from flx.trace import Tracer
 
-SCAN_LIMIT = 20  # results per keyword
-# At least this long from one keyword's request to the next, to go easy on the API and stay clear
+SCAN_LIMIT = 20  # results per keyword or skill
+# At least this long from one search's request to the next, to go easy on the API and stay clear
 # of HTTP 429. Measured start to start: a request that took longer already made the gap.
 SCAN_PAUSE_S = 1
-# A keyword that fails with one of these is skipped and the scan goes on. Anything else (bad token,
-# rate limit that outlasted its retries) would fail for every keyword, so it stops the scan.
+# A search that fails with one of these is skipped and the scan goes on. Anything else (bad token,
+# rate limit that outlasted its retries) would fail for every search, so it stops the scan.
 SKIPPABLE = (NetworkError, ApiError, BadResponseError)
 
 
@@ -81,34 +81,70 @@ def project(args: Namespace, ctx: Context) -> int:
 
 
 def scan(args: Namespace, ctx: Context) -> int:
-    client = ctx.client()
     keywords = files.load_keywords(ctx.cwd, ctx.config)
+    skills = files.load_skills(ctx.cwd, ctx.config)
+    if not keywords and not skills:
+        raise InvalidInputError(
+            f"Nothing to scan: add search terms to {files.KEYWORDS_FILE} or skill ids to "
+            f"{files.SKILLS_FILE} (in {ctx.config} or the current directory)."
+        )
+    client = ctx.client()
     seen = _load_seen(ctx) if args.only_new else set()
-    batches, failed = [], []
+    searches = [("keyword", k, lambda k=k: client.search_projects(k, limit=SCAN_LIMIT)) for k in keywords]
+    searches += [("skill", s, lambda s=s: client.search_skill(s, limit=SCAN_LIMIT)) for s in skills]
+    batches: list[list[models.Project]] = []
+    failed: dict[str, list] = {"keyword": [], "skill": []}
     started = None
-    for keyword in keywords:
+    for kind, term, run in searches:
         if started is not None:
             wait = SCAN_PAUSE_S - (ctx.monotonic() - started)
             if wait > 0:
                 ctx.sleep(wait)
         started = ctx.monotonic()
         try:
-            batches.append(client.search_projects(keyword, limit=SCAN_LIMIT))
+            batches.append(run())
         except SKIPPABLE as exc:
-            failed.append(keyword)
-            ctx.warn(f"keyword {keyword!r} failed ({exc}); skipping it.")
+            failed[kind].append(term)
+            ctx.warn(f"{kind} {term!r} failed ({exc}); skipping it.")
     if not batches:
-        raise FlxError(f"Every keyword failed ({len(failed)} of {len(keywords)}); nothing to show.")
+        raise FlxError(f"Every search failed ({len(searches)} of {len(searches)}); nothing to show.")
     projects = models.merge_projects(batches)
     shown = [p for p in projects if p.id not in seen]
     ctx.tracer.log(
-        "scan", keywords=len(keywords), failed=len(failed), found=len(projects), shown=len(shown)
+        "scan",
+        keywords=len(keywords),
+        skills=len(skills),
+        failed=len(failed["keyword"]) + len(failed["skill"]),
+        found=len(projects),
+        shown=len(shown),
     )
 
-    meta = {"keywords": keywords, "failed_keywords": failed, "only_new": args.only_new}
+    meta = {
+        "keywords": keywords,
+        "skills": skills,
+        "failed_keywords": failed["keyword"],
+        "failed_skills": failed["skill"],
+        "only_new": args.only_new,
+    }
     _print_list(shown, args, ctx, meta, empty="No new projects." if args.only_new else "No projects found.")
     if args.only_new:
         _save_seen(ctx, seen | {p.id for p in projects if p.id is not None})
+    return 0
+
+
+def skills(args: Namespace, ctx: Context) -> int:
+    """Look up skill ids by name, for skills.txt. Every skill whose name contains the text."""
+    text = args.name.strip()
+    if not text:
+        raise InvalidInputError("Skill name is empty.")
+    found = [s for s in ctx.client().get_skills() if text.casefold() in s.name.casefold()]
+    if args.json:
+        rows = [{"id": s.id, "name": s.name} for s in found]
+        print(render.to_json(_envelope("skills", ctx, name=text, count=len(rows), skills=rows)))
+    elif found:
+        print("\n".join(f"{s.id:>6}  {render.clean_line(s.name)}" for s in found))
+    else:
+        print(f"No skills match {text!r}.")
     return 0
 
 

@@ -19,6 +19,10 @@ re-reading jobs you have already seen. `flx` runs your whole keyword list in one
 and de-duplicates the results, puts the newest first, and can show only jobs you have not seen
 before.
 
+Short niche keywords (`n8n`, `zapier`) search well, but Freelancer matches multi-word text loosely:
+"llm integration" found the phrase in 1 of 20 results. For broader topics `flx` searches by
+Freelancer *skill* instead (e.g. "AI Agents", "Web Scraping"), which matches exactly.
+
 It only fetches data. It does not filter, score or rank jobs; that is left to whatever reads
 its output.
 
@@ -67,7 +71,8 @@ flx whoami        # Token works. Logged in as <your username>.
 | `flx whoami` | Checks the token; prints your username only. |
 | `flx search "<text>" [--limit N] [--offset N] [--json]` | Searches active projects. `--limit` 1-100, default 20. |
 | `flx project <id> [--json]` | One project in full: link, budget, bids, client country and payment status, description. |
-| `flx scan [--only-new] [--json]` | Searches every term in `keywords.txt` (20 results each, at most 50 terms, requests at least 1 s apart), merged, de-duplicated, newest first. A keyword that fails (network, timeout, server error) is skipped with a warning; the rest is still shown. |
+| `flx scan [--only-new] [--json]` | Searches every term in `keywords.txt` and every skill in `skills.txt` (20 results each, at most 50 per file, requests at least 1 s apart), merged, de-duplicated, newest first. A search that fails (network, timeout, server error) is skipped with a warning; the rest is still shown. |
+| `flx skills "<name>" [--json]` | Finds Freelancer skill ids whose name contains the text, for `skills.txt`. |
 
 `--only-new` shows only projects that no earlier `--only-new` scan has shown. Seen project ids
 are kept in `seen.json`; a plain `scan` never touches it.
@@ -83,12 +88,12 @@ See [`examples/`](examples/) for full sample output. It uses made-up data.
 
 ## JSON output
 
-Every `--json` output has a `schema_version` (currently `2`). It is bumped whenever a field
+Every `--json` output has a `schema_version` (currently `3`). It is bumped whenever a field
 changes, so programs reading it can detect breaking changes.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "command": "search",
   "generated_at": "2026-09-21T16:13:20Z",
   "query": "automation", "limit": 3, "offset": 0,
@@ -97,8 +102,9 @@ changes, so programs reading it can detect breaking changes.
 }
 ```
 
-`scan` has `keywords`, `failed_keywords` and `only_new` instead of `query`/`limit`/`offset`. `project` has a
-single `project` instead of `projects`/`count`.
+`scan` has `keywords`, `skills`, `failed_keywords`, `failed_skills` and `only_new` instead of
+`query`/`limit`/`offset`. `project` has a single `project` instead of `projects`/`count`. `skills`
+has `name`, `count` and `skills` (a list of `{"id", "name"}`).
 
 Each project:
 
@@ -116,6 +122,7 @@ Each project:
 | `client_country` | string | |
 | `payment_verified` | bool | Client has a verified payment method |
 | `description` | string | Full description |
+| `skills` | list of strings | The job's Freelancer skills, e.g. `["n8n", "Zapier"]` |
 
 Any field can be `null` when Freelancer does not send it.
 
@@ -128,11 +135,12 @@ first run, readable only by you:
 |---|---|
 | `.env.local` | Your token |
 | `keywords.txt` | Search terms for `scan`, one per line (`#` for comments). A default list is created on first run and never overwritten. |
+| `skills.txt` | Skill ids for `scan`, one per line; text after `#` is a note (`3028  # AI Agents`). Find ids with `flx skills`. A default list is created on first run and never overwritten. |
 | `seen.json` | Project ids already shown by `scan --only-new` (ids only, newest 10,000) |
 | `traces/YYYY-MM-DD.jsonl` | Trace log |
 
-A `.env.local` or `keywords.txt` in the current directory overrides the one in
-`~/.config/flx/`. Either file must be a regular UTF-8 file of at most 64 KiB. flx keeps the
+A `.env.local`, `keywords.txt` or `skills.txt` in the current directory overrides the one in
+`~/.config/flx/`. Each must be a regular UTF-8 file of at most 64 KiB. flx keeps the
 config folder owner-only (700) and tightens it if it finds it open to others.
 
 ## Traces

@@ -50,7 +50,9 @@ def query_of(request):
 
 
 def project(id, time_submitted):
-    return models.Project(id, f"p{id}", None, None, None, None, None, None, None, time_submitted, None, None, None)
+    return models.Project(
+        id, f"p{id}", None, None, None, None, None, None, None, time_submitted, None, None, None, None
+    )
 
 
 class S01NormalSearch(unittest.TestCase):
@@ -73,8 +75,10 @@ class S01NormalSearch(unittest.TestCase):
                 client_country="Germany",
                 payment_verified=True,
                 description="Connect a CRM to Slack with n8n.",
+                skills=("n8n", "Zapier"),  # a job without a name is skipped
             ),
         )
+        self.assertIsNone(projects[1].skills)  # no `jobs` sent
         self.assertEqual(projects[1].client_country, "Canada")
         self.assertIs(projects[1].payment_verified, False)
         self.assertEqual(projects[1].description, "Scrape product pages.")  # preview as fallback
@@ -95,6 +99,7 @@ class S01NormalSearch(unittest.TestCase):
         self.assertEqual(query["offset"], ["10"])
         self.assertEqual(query["full_description"], ["true"])
         self.assertEqual(query["owner_info"], ["true"])  # the only source of client country/payment
+        self.assertEqual(query["job_details"], ["true"])  # skill names
 
 
 class S02EmptyResult(unittest.TestCase):
@@ -253,7 +258,7 @@ class S07BadData(unittest.TestCase):
     def test_missing_fields_come_back_empty(self):
         rig = make_client(self, ok({"projects": [{"id": 5}]}))
         (only,) = rig.client.search_projects("n8n")
-        self.assertEqual(only, models.Project(5, *[None] * 12))
+        self.assertEqual(only, models.Project(5, *[None] * 13))
 
     def test_wrong_types_come_back_empty(self):
         raw = {
@@ -267,7 +272,7 @@ class S07BadData(unittest.TestCase):
         }
         rig = make_client(self, ok({"projects": [raw, "junk", None]}))
         (only,) = rig.client.search_projects("n8n")
-        self.assertEqual(only, models.Project(*[None] * 13))
+        self.assertEqual(only, models.Project(*[None] * 14))
 
 
 class S08ReadOnly(unittest.TestCase):

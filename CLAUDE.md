@@ -16,7 +16,7 @@
 - Planned-but-unbuilt features are `NotImplementedError` stubs (e.g. `flx login`); never fake them.
 - `--debug` mirrors trace lines to stderr (token masked).
 - JSON output carries `schema_version`; bump it on any field change.
-- Files live in `$XDG_CONFIG_HOME/flx` (default `~/.config/flx`, created on first run): `.env.local`, `keywords.txt`, `seen.json` (IDs only, backs `--only-new`), `traces/YYYY-MM-DD.jsonl` (always on, linked by `run_id` + `seq`). `.env.local`/`keywords.txt` in cwd override. Tests must set `XDG_CONFIG_HOME` to a temp dir (see `tests/fakes.run_cli`).
+- Files live in `$XDG_CONFIG_HOME/flx` (default `~/.config/flx`, created on first run): `.env.local`, `keywords.txt`, `skills.txt` (Freelancer skill ids), `seen.json` (IDs only, backs `--only-new`), `traces/YYYY-MM-DD.jsonl` (always on, linked by `run_id` + `seq`). `.env.local`/`keywords.txt`/`skills.txt` in cwd override. Tests must set `XDG_CONFIG_HOME` to a temp dir (see `tests/fakes.run_cli`).
 - 429: exponential backoff, max 3 retries (1/2/4 s, honour `Retry-After` up to 10 s). Timeout: one retry after 2 s. `scan` spaces keyword requests >= 1 s start to start.
 - Read `PROGRESS.md` at session start; tick finished tasks at the end. PROGRESS/DECISIONS are Turkish, code/README English.
 

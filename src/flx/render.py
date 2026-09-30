@@ -96,6 +96,7 @@ def detail(project: Project, *, width: int, now: float) -> str:
         ("Bids", _bids(p)),
         ("Posted", f"{posted:%Y-%m-%d %H:%M} UTC ({age(p.time_submitted, now)} ago)" if posted else "-"),
         ("Client", _client(p)),
+        ("Skills", clean_line(", ".join(p.skills)) if p.skills else "-"),
     ]
     head = clean_line(p.title or "(no title)")
     body = "\n".join(f"{label:<8}{value}" for label, value in fields)

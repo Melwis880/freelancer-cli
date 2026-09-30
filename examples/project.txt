@@ -8,6 +8,7 @@ Budget  250-750 USD
 Bids    18 (average 412.50 USD)
 Posted  2026-09-21 15:13 UTC (1h ago)
 Client  Germany, payment verified
+Skills  n8n, Workflow Automation, Zapier
 
 Description
 We use HubSpot and Slack. Build an n8n workflow that posts every new qualified lead to a

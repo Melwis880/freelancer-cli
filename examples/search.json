@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "command": "search",
   "generated_at": "2026-09-21T16:13:20Z",
   "query": "automation",
@@ -20,7 +20,12 @@
       "time_submitted": "2026-09-21T15:13:20Z",
       "client_country": "Germany",
       "payment_verified": true,
-      "description": "We use HubSpot and Slack. Build an n8n workflow that posts every new qualified lead to a Slack channel.\n\nPlease share one similar workflow you built."
+      "description": "We use HubSpot and Slack. Build an n8n workflow that posts every new qualified lead to a Slack channel.\n\nPlease share one similar workflow you built.",
+      "skills": [
+        "n8n",
+        "Workflow Automation",
+        "Zapier"
+      ]
     },
     {
       "id": 40000002,
@@ -35,7 +40,12 @@
       "time_submitted": "2026-09-21T11:13:20Z",
       "client_country": "Netherlands",
       "payment_verified": true,
-      "description": "RAG over ~2,000 PDFs."
+      "description": "RAG over ~2,000 PDFs.",
+      "skills": [
+        "LangChain",
+        "Retrieval-Augmented Generation (RAG)",
+        "Python"
+      ]
     },
     {
       "id": 40000001,
@@ -50,7 +60,11 @@
       "time_submitted": "2026-09-20T13:13:20Z",
       "client_country": "Canada",
       "payment_verified": false,
-      "description": "Daily price scrape of 3 shops."
+      "description": "Daily price scrape of 3 shops.",
+      "skills": [
+        "Web Scraping",
+        "Python"
+      ]
     }
   ]
 }

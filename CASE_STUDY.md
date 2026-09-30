@@ -19,13 +19,13 @@ official Freelancer REST API and does nothing else.
 - **Read-only by construction.** The HTTP client refuses every method but GET before a request is
   built, and does not follow redirects, so the token never leaves for another host. It cannot bid
   or message.
-- **Polite to the API.** `scan` keeps keyword requests at least 1 s apart, start to start. On
+- **Polite to the API.** `scan` keeps its requests at least 1 s apart, start to start. On
   HTTP 429 it backs off 1, 2, 4 s (or honours `Retry-After`, capped at 10 s), retries at most 3
   times, then stops with a clear message. A timeout is retried once.
 - **One command for the whole routine.** `flx scan --only-new` searches every term in
-  `keywords.txt`, merges and de-duplicates the results, sorts newest first, and shows only jobs no
+  `keywords.txt` and every Freelancer skill in `skills.txt`, merges and de-duplicates the results, sorts newest first, and shows only jobs no
   earlier scan has shown.
-- **Strict JSON for machines.** `--json` output carries a `schema_version` and a fixed set of 13
+- **Strict JSON for machines.** `--json` output carries a `schema_version` and a fixed set of 14
   fields per job, with a test that fails if the fields change without a version bump. Missing data
   comes back as `null` instead of crashing.
 - **Standard, safe local files.** Token, keywords, seen ids and traces live in
@@ -35,7 +35,7 @@ official Freelancer REST API and does nothing else.
   they reach the terminal.
 
 Every behaviour is listed as a scenario in `tests/SCENARIOS.md`, each with an automated test
-(102 tests, no network). The tests were checked by deliberately breaking the code: every break was
+(115 tests, no network). The tests were checked by deliberately breaking the code: every break was
 caught.
 
 ## Impact
@@ -47,8 +47,12 @@ First live run (2026-09-29), with the original 11-keyword list:
 - The live check found that the API only sends client country and payment status inside
   `owner_info`, and only when it is asked for. It was fixed and verified the same day.
 
-The keyword list has since been narrowed to niche terms (n8n, make.com, zapier, langchain, crewai,
-...) to cut unrelated jobs; its effect has not been measured yet.
+Relevance, measured (2026-09-30): a scan with niche keywords plus multi-word terms ("llm
+integration", "python web scraping") returned about half unrelated jobs. Searching each term alone
+showed why: the API matches multi-word text loosely, and those four terms found their phrase in 1 of
+80 results. They were replaced by skill searches (AI Agents, LLM Integration, AI Automation, RAG, Web
+Scraping), which match exactly. The next live scan: 85 jobs from 10 requests in 13 s, and 75 of them
+carry one of the target skills. Each job now also lists its skills, so the agent can filter on them.
 
 The result is a clean, de-duplicated, structured feed that a future bidding agent can consume
 directly: it reads `flx scan --only-new --json`, and all filtering and scoring stays on the agent's

@@ -46,10 +46,11 @@ SEARCH_ENDPOINT = "projects/0.1/projects/active/"
 # The multi-project endpoint answers in the same shape as search, so one parser serves both.
 PROJECTS_ENDPOINT = "projects/0.1/projects/"
 SELF_ENDPOINT = "users/0.1/self/"
-# Full description, plus `owner_info` (the client's country and payment status) inside each project.
-# Checked against the live API on 2026-09-29: owner_id and the users map come back empty, so
-# owner_info is the only place these fields exist.
-DETAILS = {"full_description": True, "owner_info": True}
+JOBS_ENDPOINT = "projects/0.1/jobs/"  # every Freelancer skill ("job"), ~3,500 of them
+# Full description, `owner_info` (the client's country and payment status) and `jobs` with names
+# (the project's skills) inside each project. Checked against the live API on 2026-09-29:
+# owner_id and the users map come back empty, so owner_info is the only place these fields exist.
+DETAILS = {"full_description": True, "owner_info": True, "job_details": True}
 
 _PROJECT_ID = re.compile(r"[0-9]{1,12}")
 
@@ -90,6 +91,22 @@ class Client:
         projects = models.parse_search(self.get(SEARCH_ENDPOINT, params))
         self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
         return projects
+
+    def search_skill(self, skill_id: int, *, limit: int = 20) -> list[models.Project]:
+        """Active projects tagged with one skill; the API matches skill ids exactly."""
+        if type(skill_id) is not int or skill_id <= 0:
+            raise self._fail(
+                InvalidInputError, f"Skill id must be a positive number, got {skill_id!r}.", SEARCH_ENDPOINT
+            )
+        params = {"jobs[]": [skill_id], "limit": limit, "offset": 0, **DETAILS}
+        projects = models.parse_search(self.get(SEARCH_ENDPOINT, params))
+        self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
+        return projects
+
+    def get_skills(self) -> list[models.Skill]:
+        skills = models.parse_skills(self.get(JOBS_ENDPOINT))
+        self._tracer.log("result", endpoint=JOBS_ENDPOINT, count=len(skills))
+        return skills
 
     def get_project(self, project_id: int | str) -> models.Project:
         text = str(project_id)

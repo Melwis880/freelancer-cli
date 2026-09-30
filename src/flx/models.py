@@ -24,6 +24,13 @@ class Project:
     client_country: str | None
     payment_verified: bool | None
     description: str | None
+    skills: tuple[str, ...] | None  # skill names; sent when asked for with job_details=true
+
+
+@dataclass(frozen=True)
+class Skill:
+    id: int
+    name: str
 
 
 def parse_search(result: Any) -> list[Project]:
@@ -51,7 +58,16 @@ def parse_project(raw: Any) -> Project:
         client_country=_str(_get(owner, "country", "name")),
         payment_verified=_bool(_get(owner, "status", "payment_verified")),
         description=_str(_get(raw, "description")) or _str(_get(raw, "preview_description")),
+        skills=_skill_names(_get(raw, "jobs")),
     )
+
+
+def parse_skills(result: Any) -> list[Skill]:
+    """Skills from the `jobs` endpoint, whose `result` is a list; junk entries are skipped."""
+    if not isinstance(result, list):
+        return []
+    skills = [Skill(_int(_get(raw, "id")), _str(_get(raw, "name"))) for raw in result]
+    return [s for s in skills if s.id is not None and s.name is not None]
 
 
 def parse_username(result: Any) -> str | None:
@@ -70,6 +86,12 @@ def merge_projects(batches: Iterable[Iterable[Project]]) -> list[Project]:
                 seen.add(project.id)
             merged.append(project)
     return sorted(merged, key=lambda p: (p.time_submitted is None, -(p.time_submitted or 0)))
+
+
+def _skill_names(jobs: Any) -> tuple[str, ...] | None:
+    if not isinstance(jobs, list):
+        return None
+    return tuple(name for name in (_str(_get(job, "name")) for job in jobs) if name)
 
 
 def _get(data: Any, *keys: str) -> Any:

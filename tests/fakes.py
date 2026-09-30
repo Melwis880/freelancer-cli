@@ -32,6 +32,7 @@ SEARCH_RESULT = {
             "description": "Connect a CRM to Slack with n8n.",
             "preview_description": "Connect a CRM...",
             "owner_info": {"country": {"name": "Germany"}, "status": {"payment_verified": True}},
+            "jobs": [{"id": 3112, "name": "n8n"}, {"id": 2050, "name": "Zapier"}, {"id": 7}],
         },
         {
             "id": 102,
@@ -134,12 +135,16 @@ def temp_dir(test):
     return Path(tmp.name)
 
 
-def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, columns=100, request_s=0.0):
+def run_cli(
+    test, argv, *outcomes, token=TOKEN, keywords=None, skills="", root=None, columns=100, request_s=0.0
+):
     """Run flx in-process against a fake API and a fake clock (each request takes `request_s`).
 
     Everything lives under a temp `root`: `root/cwd` is the working directory and `root/xdg` is
     XDG_CONFIG_HOME, so the real environment, ~/.config/flx and the repo's .env.local are never
-    read. Pass `root=` from an earlier run to share its files. `keywords` goes to cwd/keywords.txt.
+    read. Pass `root=` from an earlier run to share its files. `keywords` goes to cwd/keywords.txt
+    and `skills` to cwd/skills.txt; skills default to none, so a scan only makes the keyword
+    requests a test queued. Pass `skills=None` to leave the file out (the config dir's is used).
     A request the test did not queue an outcome for fails the test loudly (IndexError).
     """
     root = root or temp_dir(test)
@@ -147,6 +152,8 @@ def run_cli(test, argv, *outcomes, token=TOKEN, keywords=None, root=None, column
     cwd.mkdir(exist_ok=True)
     if keywords is not None:
         (cwd / "keywords.txt").write_text(keywords, encoding="utf-8")
+    if skills is not None:
+        (cwd / "skills.txt").write_text(skills, encoding="utf-8")
     environ = {"XDG_CONFIG_HOME": str(root / "xdg")}
     if token:
         environ["FREELANCER_TOKEN"] = token

@@ -1,15 +1,17 @@
 """Where flx keeps its files, and reading/writing them.
 
 Home is the config dir: `$XDG_CONFIG_HOME/flx`, default `~/.config/flx`. It holds `.env.local`
-(token), `keywords.txt`, `seen.json` (project ids only) and `traces/`. It is created on first run,
-with a default `keywords.txt`. A `.env.local` or `keywords.txt` in the current directory overrides
-the one in the config dir, so a project checkout can carry its own.
+(token), `keywords.txt`, `skills.txt`, `seen.json` (project ids only) and `traces/`. It is created
+on first run, with a default `keywords.txt` and `skills.txt`. A `.env.local`, `keywords.txt` or
+`skills.txt` in the current directory overrides the one in the config dir, so a project checkout
+can carry its own.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -18,6 +20,7 @@ from flx.errors import InvalidInputError
 
 APP = "flx"
 KEYWORDS_FILE = "keywords.txt"
+SKILLS_FILE = "skills.txt"
 SEEN_FILE = "seen.json"
 TRACE_DIR = "traces"
 MAX_SEEN = 10_000  # ids only grow, so keeping the highest ones keeps the most recent projects
@@ -25,7 +28,7 @@ MAX_SEEN = 10_000  # ids only grow, so keeping the highest ones keeps the most r
 # a planted FIFO, /dev/zero or huge file cannot hang flx, and a huge keyword list cannot turn
 # into thousands of API calls under the user's token.
 MAX_FILE_BYTES = 64 * 1024
-MAX_KEYWORDS = 50
+MAX_TERMS = 50  # per file: keywords.txt and skills.txt each
 
 # Single niche terms. Broad ones ("openai", "chatbot") pulled in logo and translation jobs, and the
 # API matches multi-word terms loosely ("llm integration" found the phrase in 1 of 20 results,
@@ -40,6 +43,19 @@ DEFAULT_KEYWORDS = (
 KEYWORDS_HEADER = (
     "# Search terms for `flx scan`, one per line. Blank lines and lines starting with # are skipped.\n"
 )
+# Freelancer skill ids: searching by skill matches exactly, where multi-word text does not.
+DEFAULT_SKILLS = (
+    (3028, "AI Agents"),
+    (3101, "LLM Integration"),
+    (3380, "AI Automation"),
+    (3100, "Retrieval-Augmented Generation (RAG)"),
+    (95, "Web Scraping"),
+)
+SKILLS_HEADER = (
+    "# Freelancer skill ids for `flx scan`, one per line; text after # is a note.\n"
+    "# Find more with: flx skills \"<name>\"\n"
+)
+_SKILL_ID = re.compile(r"[0-9]{1,9}")
 
 
 def config_dir(environ: Mapping[str, str]) -> Path:
@@ -51,18 +67,23 @@ def config_dir(environ: Mapping[str, str]) -> Path:
 
 
 def ensure_config(config: Path) -> None:
-    """Create the config dir (owner-only, it holds the token) and a default keywords.txt.
+    """Create the config dir (owner-only, it holds the token), a default keywords.txt and skills.txt.
 
     A dir that already exists, e.g. from `mkdir -p` with umask 002, is tightened to 700.
     """
     config.mkdir(mode=0o700, parents=True, exist_ok=True)
     if config.stat().st_mode & 0o077:
         config.chmod(0o700)
-    try:
-        with (config / KEYWORDS_FILE).open("x", encoding="utf-8") as fh:
-            fh.write(KEYWORDS_HEADER + "\n".join(DEFAULT_KEYWORDS) + "\n")
-    except FileExistsError:
-        pass  # never overwrite the user's list
+    skills = "".join(f"{skill_id}  # {name}\n" for skill_id, name in DEFAULT_SKILLS)
+    for name, text in (
+        (KEYWORDS_FILE, KEYWORDS_HEADER + "\n".join(DEFAULT_KEYWORDS) + "\n"),
+        (SKILLS_FILE, SKILLS_HEADER + skills),
+    ):
+        try:
+            with (config / name).open("x", encoding="utf-8") as fh:
+                fh.write(text)
+        except FileExistsError:
+            pass  # never overwrite the user's list
 
 
 def find(name: str, cwd: Path, config: Path) -> Path:
@@ -96,31 +117,52 @@ def reason(exc: Exception) -> str:
 
 
 def load_keywords(cwd: Path, config: Path) -> list[str]:
-    """One search term per line; blank lines, `#` comments and repeats are skipped."""
-    path = find(KEYWORDS_FILE, cwd, config)
-    try:
-        text = read_small(path)
-    except FileNotFoundError:
-        raise InvalidInputError(
-            f"{KEYWORDS_FILE} not found in {cwd} or {config}; create it with one search term per line."
-        ) from None
-    except (OSError, ValueError) as exc:
-        raise InvalidInputError(f"Could not read {path} ({reason(exc)}).") from None
+    """One search term per line; blank lines, `#` comments and repeats (any case) are skipped."""
+    path, lines = _lines(KEYWORDS_FILE, cwd, config)
     keywords: list[str] = []
     seen: set[str] = set()
-    for line in text.splitlines():
+    for line in lines:
         keyword = line.strip()
         if keyword and not keyword.startswith("#") and keyword.casefold() not in seen:
             seen.add(keyword.casefold())
             keywords.append(keyword)
-    if not keywords:
-        raise InvalidInputError(f"{path} has no keywords; add one search term per line.")
-    if len(keywords) > MAX_KEYWORDS:
+    return _capped(keywords, path, "keywords")
+
+
+def load_skills(cwd: Path, config: Path) -> list[int]:
+    """One skill id per line; anything after `#` is a note. Blank lines and repeats are skipped."""
+    path, lines = _lines(SKILLS_FILE, cwd, config)
+    skills: list[int] = []
+    for number, line in enumerate(lines, 1):
+        text = line.partition("#")[0].strip()
+        if not text:
+            continue
+        if not _SKILL_ID.fullmatch(text) or int(text) == 0:
+            raise InvalidInputError(
+                f"{path} line {number}: {text[:40]!r} is not a skill id; find ids with `flx skills <name>`."
+            )
+        if int(text) not in skills:
+            skills.append(int(text))
+    return _capped(skills, path, "skills")
+
+
+def _lines(name: str, cwd: Path, config: Path) -> tuple[Path, list[str]]:
+    """Lines of `name` from cwd or the config dir; a missing file has none."""
+    path = find(name, cwd, config)
+    try:
+        return path, read_small(path).splitlines()
+    except FileNotFoundError:
+        return path, []
+    except (OSError, ValueError) as exc:
+        raise InvalidInputError(f"Could not read {path} ({reason(exc)}).") from None
+
+
+def _capped(items: list, path: Path, what: str) -> list:
+    if len(items) > MAX_TERMS:
         raise InvalidInputError(
-            f"{path} has {len(keywords)} keywords; scan takes at most {MAX_KEYWORDS}, "
-            "one API call each."
+            f"{path} has {len(items)} {what}; scan takes at most {MAX_TERMS}, one API call each."
         )
-    return keywords
+    return items
 
 
 def load_seen(config: Path) -> set[int]:

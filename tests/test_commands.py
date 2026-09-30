@@ -17,9 +17,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _path  # noqa: F401
-from fakes import NOW, SEARCH_RESULT, TOKEN, FakeResponse, http_error, ok, run_cli, temp_dir, trace_lines
+from fakes import (
+    NOW,
+    SEARCH_RESULT,
+    TOKEN,
+    FakeResponse,
+    http_error,
+    make_client,
+    ok,
+    run_cli,
+    temp_dir,
+    trace_lines,
+)
 
 from flx import SCHEMA_VERSION, cli, files, models, render
+from flx.errors import InvalidInputError
 
 PROJECT_FIELDS = [
     "id",
@@ -35,6 +47,7 @@ PROJECT_FIELDS = [
     "client_country",
     "payment_verified",
     "description",
+    "skills",
 ]
 
 
@@ -181,7 +194,7 @@ class S23Json(unittest.TestCase):
 
     def test_field_list_is_pinned_to_the_schema_version(self):
         # Changing a field? Bump SCHEMA_VERSION in src/flx/__init__.py and update both lines here.
-        self.assertEqual(SCHEMA_VERSION, 2)
+        self.assertEqual(SCHEMA_VERSION, 3)
         self.assertEqual([f.name for f in dataclasses.fields(models.Project)], PROJECT_FIELDS)
 
     def test_project_and_scan_json(self):
@@ -193,6 +206,8 @@ class S23Json(unittest.TestCase):
         scan = json.loads(run_cli(self, ["scan", "--json"], ok(SEARCH_RESULT), keywords="n8n\n").out)
         self.assertEqual(scan["keywords"], ["n8n"])
         self.assertEqual(scan["failed_keywords"], [])
+        self.assertEqual((scan["skills"], scan["failed_skills"]), ([], []))
+        self.assertEqual(project["project"]["skills"], ["n8n", "Zapier"])
         self.assertIs(scan["only_new"], False)
         self.assertEqual([p["id"] for p in scan["projects"]], [102, 101])
 
@@ -208,6 +223,7 @@ class S24ProjectDetail(unittest.TestCase):
             "12 (average 140.50 USD)",
             "(2h ago)",
             "Germany, payment verified",
+            "Skills  n8n, Zapier",
             "Connect a CRM to Slack with n8n.",
         ):
             self.assertIn(expected, run.out)
@@ -429,7 +445,7 @@ class S30ConfigDir(unittest.TestCase):
         run = run_cli(self, ["scan", "--only-new"], ok(SEARCH_RESULT), keywords="n8n\n")
         self.assertTrue((run.config / files.SEEN_FILE).is_file())
         self.assertTrue(list((run.config / files.TRACE_DIR).glob("*.jsonl")))
-        self.assertEqual(sorted(p.name for p in run.cwd.iterdir()), ["keywords.txt"])
+        self.assertEqual(sorted(p.name for p in run.cwd.iterdir()), ["keywords.txt", "skills.txt"])
 
     def test_config_dir_location(self):
         self.assertEqual(files.config_dir({"XDG_CONFIG_HOME": "/x/cfg", "HOME": "/h"}), Path("/x/cfg/flx"))
@@ -473,14 +489,137 @@ class S32UntrustedFiles(unittest.TestCase):
         self.assertEqual(json.loads(run.out)["keywords"], ["my own term"])
 
     def test_at_most_fifty_keywords(self):
-        terms = "".join(f"term {i}\n" for i in range(files.MAX_KEYWORDS + 1))
+        terms = "".join(f"term {i}\n" for i in range(files.MAX_TERMS + 1))
         run = run_cli(self, ["scan"], keywords=terms)
         self.assertEqual(run.code, cli.EXIT_ERROR)
         self.assertIn("51 keywords; scan takes at most 50", run.err)
         self.assertEqual(run.opener.requests, [])
-        terms = "".join(f"term {i}\n" for i in range(files.MAX_KEYWORDS))
-        outcomes = [ok(result_with()) for _ in range(files.MAX_KEYWORDS)]
+        terms = "".join(f"term {i}\n" for i in range(files.MAX_TERMS))
+        outcomes = [ok(result_with()) for _ in range(files.MAX_TERMS)]
         self.assertEqual(run_cli(self, ["scan"], *outcomes, keywords=terms).code, 0)
+
+
+SKILL_JOBS = [
+    {"id": 3028, "name": "AI Agents"},
+    {"id": 3106, "name": "AI Agent Swarms"},
+    {"id": 95, "name": "Web Scraping"},
+    {"id": 3172, "name": "ElevenAgents\x1b[2J"},
+    {"id": "junk"},
+]
+
+
+class S34SkillsFile(unittest.TestCase):
+    def test_first_run_creates_default_skills_that_scan_searches(self):
+        outcomes = [ok(result_with()) for _ in files.DEFAULT_KEYWORDS + files.DEFAULT_SKILLS]
+        run = run_cli(self, ["scan", "--json"], *outcomes, skills=None)
+        self.assertEqual(run.code, 0)
+        default_ids = [skill_id for skill_id, _ in files.DEFAULT_SKILLS]
+        self.assertEqual(json.loads(run.out)["skills"], default_ids)
+        text = (run.config / files.SKILLS_FILE).read_text(encoding="utf-8")
+        self.assertIn("3028  # AI Agents", text)
+        skill_queries = [query_of(r)["jobs[]"] for r in run.opener.requests if "jobs[]" in query_of(r)]
+        self.assertEqual(skill_queries, [[str(i)] for i in default_ids])
+
+    def test_existing_skills_are_never_overwritten(self):
+        root = temp_dir(self)
+        (config_of(root) / files.SKILLS_FILE).write_text("95\n", encoding="utf-8")
+        run = run_cli(self, ["scan", "--json"], ok(result_with()), skills=None, keywords="", root=root)
+        self.assertEqual(json.loads(run.out)["skills"], [95])
+        self.assertEqual((run.config / files.SKILLS_FILE).read_text(encoding="utf-8"), "95\n")
+
+    def test_notes_blank_lines_and_repeats_are_skipped(self):
+        root = temp_dir(self)
+        (root / "cwd").mkdir()
+        (root / "cwd" / files.SKILLS_FILE).write_text("# mine\n\n3028  # AI Agents\n 95\n3028\n", encoding="utf-8")
+        self.assertEqual(files.load_skills(root / "cwd", config_of(root)), [3028, 95])
+
+    def test_a_line_that_is_not_a_skill_id_stops_before_any_request(self):
+        for bad in ("AI Agents", "-5", "0", "3.5", "１２"):
+            with self.subTest(bad=bad):
+                run = run_cli(self, ["scan"], keywords="n8n\n", skills=f"95\n{bad}\n")
+                self.assertEqual(run.code, cli.EXIT_ERROR)
+                self.assertIn("line 2", run.err)
+                self.assertIn("flx skills", run.err)
+                self.assertEqual(run.opener.requests, [])
+
+    def test_at_most_fifty_skills(self):
+        ids = "".join(f"{i}\n" for i in range(1, files.MAX_TERMS + 2))
+        run = run_cli(self, ["scan"], keywords="", skills=ids)
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertIn("51 skills; scan takes at most 50", run.err)
+        self.assertEqual(run.opener.requests, [])
+
+
+class S35ScanWithSkills(unittest.TestCase):
+    def test_skills_are_searched_after_keywords_and_merged(self):
+        by_skill = result_with(
+            {"id": 101, "title": "Build an n8n workflow", "time_submitted": 1790000000},  # also from n8n
+            {"id": 201, "title": "AI agent for support", "time_submitted": 1790000900,
+             "jobs": [{"id": 3028, "name": "AI Agents"}]},
+        )
+        run = run_cli(
+            self, ["scan", "--json"], ok(SEARCH_RESULT), ok(by_skill), ok(result_with()),
+            keywords="n8n\n", skills="3028\n95\n",
+        )
+        self.assertEqual(run.code, 0)
+        keyword_request, *skill_requests = [query_of(r) for r in run.opener.requests]
+        self.assertEqual(keyword_request["query"], ["n8n"])
+        for query, skill_id in zip(skill_requests, ("3028", "95")):
+            self.assertEqual(query["jobs[]"], [skill_id])
+            self.assertNotIn("query", query)
+            self.assertEqual((query["limit"], query["job_details"]), (["20"], ["true"]))
+        self.assertEqual(run.sleeps, [1, 1])  # the gap applies to every search
+        data = json.loads(run.out)
+        self.assertEqual((data["keywords"], data["skills"]), (["n8n"], [3028, 95]))
+        self.assertEqual([p["id"] for p in data["projects"]], [201, 102, 101])
+        self.assertEqual(data["projects"][0]["skills"], ["AI Agents"])
+
+    def test_skills_alone_are_enough(self):
+        run = run_cli(self, ["scan", "--json"], ok(SEARCH_RESULT), keywords="# none\n", skills="95\n")
+        self.assertEqual(run.code, 0)
+        self.assertEqual(json.loads(run.out)["count"], 2)
+
+    def test_a_failing_skill_is_skipped(self):
+        run = run_cli(
+            self, ["scan", "--json"], ok(SEARCH_RESULT), http_error(503), keywords="n8n\n", skills="95\n"
+        )
+        self.assertEqual(run.code, 0)
+        data = json.loads(run.out)
+        self.assertEqual((data["failed_keywords"], data["failed_skills"]), ([], [95]))
+        self.assertIn("skill 95 failed", run.err)
+
+    def test_client_refuses_a_bad_skill_id_before_sending(self):
+        rig = make_client(self)
+        for bad in (0, -3, "95", 9.5, True):
+            with self.subTest(bad=bad), self.assertRaises(InvalidInputError):
+                rig.client.search_skill(bad)
+        self.assertEqual(rig.opener.requests, [])
+
+
+class S36SkillsCommand(unittest.TestCase):
+    def test_finds_skills_by_part_of_the_name(self):
+        run = run_cli(self, ["skills", "AGENT"], ok(SKILL_JOBS))
+        self.assertEqual(run.code, 0)
+        self.assertEqual(
+            run.out.splitlines(), ["  3028  AI Agents", "  3106  AI Agent Swarms", "  3172  ElevenAgents [2J"]
+        )
+        (request,) = run.opener.requests
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(urllib.parse.urlsplit(request.full_url).path, "/api/projects/0.1/jobs/")
+
+    def test_json_and_no_match(self):
+        data = json.loads(run_cli(self, ["skills", "scraping", "--json"], ok(SKILL_JOBS)).out)
+        self.assertEqual(
+            (data["schema_version"], data["command"], data["name"]), (SCHEMA_VERSION, "skills", "scraping")
+        )
+        self.assertEqual(data["skills"], [{"id": 95, "name": "Web Scraping"}])
+        run = run_cli(self, ["skills", "welding"], ok(SKILL_JOBS))
+        self.assertEqual(run.out, "No skills match 'welding'.\n")
+
+    def test_empty_name_is_refused_before_any_request(self):
+        run = run_cli(self, ["skills", "  "])
+        self.assertEqual(run.code, cli.EXIT_ERROR)
+        self.assertEqual(run.opener.requests, [])
 
 
 class S31PartialScan(unittest.TestCase):
@@ -523,7 +662,7 @@ class S31PartialScan(unittest.TestCase):
         run = run_cli(self, ["scan"], *[TimeoutError()] * 6, keywords=self.KEYWORDS)
         self.assertEqual(run.code, cli.EXIT_ERROR)
         self.assertEqual(run.out, "")
-        self.assertIn("Every keyword failed (3 of 3)", run.err)
+        self.assertIn("Every search failed (3 of 3)", run.err)
 
     def test_bad_token_still_stops_the_scan_at_once(self):
         run = run_cli(self, ["scan"], ok(self.FIRST), http_error(401), keywords=self.KEYWORDS)
