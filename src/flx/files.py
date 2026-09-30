@@ -27,17 +27,15 @@ MAX_SEEN = 10_000  # ids only grow, so keeping the highest ones keeps the most r
 MAX_FILE_BYTES = 64 * 1024
 MAX_KEYWORDS = 50
 
-# Niche terms: broad ones ("openai", "chatbot") pulled in logo and translation jobs.
+# Single niche terms. Broad ones ("openai", "chatbot") pulled in logo and translation jobs, and the
+# API matches multi-word terms loosely ("llm integration" found the phrase in 1 of 20 results,
+# quotes are ignored), filling the list with unrelated jobs.
 DEFAULT_KEYWORDS = (
     "n8n",
     "make.com",
     "zapier",
     "langchain",
     "crewai",
-    "ai agent development",
-    "llm integration",
-    "python automation",
-    "python web scraping",
 )
 KEYWORDS_HEADER = (
     "# Search terms for `flx scan`, one per line. Blank lines and lines starting with # are skipped.\n"

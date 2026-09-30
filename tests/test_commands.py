@@ -259,6 +259,11 @@ class S25Scan(unittest.TestCase):
 
 
 class S26Keywords(unittest.TestCase):
+    def test_default_keywords_are_single_terms(self):
+        # the API matches multi-word terms loosely and fills the results with unrelated jobs
+        for keyword in files.DEFAULT_KEYWORDS:
+            self.assertEqual(keyword.split(), [keyword])
+
     def test_empty_keywords_file_stops_before_any_request(self):
         for content in ("", "# only a comment\n\n   \n"):
             with self.subTest(content=content):

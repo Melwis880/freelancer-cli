@@ -36,7 +36,7 @@ Run all: `python -m unittest discover -s tests`
 | 23 | `--json` | Top level has `schema_version` (2), `command`, `generated_at` and the command's inputs; every project has exactly the 13 fields of `models.Project`, `time_submitted` as ISO 8601 UTC. The field list is pinned to the schema version. |
 | 24 | `project <id>` | Shows title, link, type, budget, bids with average, posting time and age, client country and payment status, full description. Missing fields do not break the view; a bad id fails before any request. |
 | 25 | `scan` | Searches every keyword (20 results each), merges and de-duplicates them newest first. Keyword requests start at least 1 s apart, measured start to start: a request that took longer is not followed by an extra pause. |
-| 26 | Empty `keywords.txt` | Clear error, no request. Blank lines, `#` comments and repeated terms (any case) are skipped. |
+| 26 | Empty `keywords.txt` | Clear error, no request. Blank lines, `#` comments and repeated terms (any case) are skipped. The default list holds single niche terms only: the API matches multi-word terms loosely (live check 2026-09-30). |
 | 27 | Hostile text from the API | Escape sequences, control, bidi and zero-width characters in titles, descriptions, fields, error messages or `scan` warnings never reach the terminal. JSON escapes them and keeps the original text. Trace lines (file and `--debug`) are pure ASCII, non-ASCII escaped. |
 | 28 | `seen.json` problems | Unreadable file: warning, every project treated as new, file rebuilt. Unwritable: warning, output still shown. Only the newest 10,000 ids are kept. |
 | 29 | Bad search input | Empty search text fails before any request; `--limit` must be 1-100 and `--offset` 0 or more (usage error, exit 2). |
