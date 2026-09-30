@@ -87,10 +87,7 @@ class Client:
         self._base_url = base_url.rstrip("/")
 
     def search_projects(self, query: str, *, limit: int = 20, offset: int = 0) -> list[models.Project]:
-        params = {"query": query, "limit": limit, "offset": offset, **DETAILS}
-        projects = models.parse_search(self.get(SEARCH_ENDPOINT, params))
-        self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
-        return projects
+        return self._search({"query": query, "limit": limit, "offset": offset})
 
     def search_skill(self, skill_id: int, *, limit: int = 20) -> list[models.Project]:
         """Active projects tagged with one skill; the API matches skill ids exactly."""
@@ -98,8 +95,11 @@ class Client:
             raise self._fail(
                 InvalidInputError, f"Skill id must be a positive number, got {skill_id!r}.", SEARCH_ENDPOINT
             )
-        params = {"jobs[]": [skill_id], "limit": limit, "offset": 0, **DETAILS}
-        projects = models.parse_search(self.get(SEARCH_ENDPOINT, params))
+        return self._search({"jobs[]": [skill_id], "limit": limit, "offset": 0})
+
+    def _search(self, params: dict[str, Any]) -> list[models.Project]:
+        """One page of active projects, with DETAILS, traced as a `result` line."""
+        projects = models.parse_search(self.get(SEARCH_ENDPOINT, {**params, **DETAILS}))
         self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
         return projects
 
