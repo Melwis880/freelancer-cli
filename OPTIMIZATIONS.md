@@ -1,4 +1,208 @@
-# OPTIMIZATIONS - flx v0.1.0 pre-publish audit (2026-09-29)
+# OPTIMIZATIONS - flx v0.2.0 audit (2026-09-30)
+
+Scope: `src/flx/*`, `tests/*`, `pyproject.toml`, `.github/workflows/test.yml`, plus the live traces
+in `~/.config/flx/traces/` (6 `scan` runs and 2 `skills` runs, 2026-09-29/30). Nothing is applied.
+Items marked **DECISIONS** change a recorded decision and need Meriç's OK first. Security items
+live in `security.md` and the 2026-09-30 audit (trace file modes, `read_small` race).
+
+Status of the v0.1.0 audit below: F1, F2, F4-F8 applied and still in place (checked: no
+`EXIT_OK`, one token message, `_strip_controls` shared, `poll_interval=0.05`, single version
+source). F3 and F9 were never measured and are still open.
+
+## 1) Optimization Summary
+
+Health is good. No hot path, no dead code found (every top-level name is referenced), suite runs in
+0.8 s. Wall time is network. Live `scan`, 5 keywords + 6 skills = 11 requests: 14.0 s and 20.1 s
+(the slow run's first request took 5.2 s). Requests take 0.45-2.3 s, and pacing adds ~1.4 s. 108
+results collapse to 83 unique projects (23% duplicates).
+
+Top 3 by ROI:
+1. **G1: 4 of 11 requests bring back almost nothing.** LLM Integration 0, RAG 1, `crewai` 2,
+   Agentic AI 5, so 8 projects for ~4 s of a 14 s scan. Grouping the three low-volume skills
+   into one request saves 2 requests. DECISIONS.
+2. **G2: record how many new projects each term adds**, trace only. Keeping or dropping terms
+   (the `zapier` question, grouping skills) then rests on data, not on reading 80 listings by hand.
+3. **G3: no overall time limit on `scan`.** In the worst case it runs for ~8 minutes; the proposal
+   agent calls it unattended.
+
+Biggest risk if nothing changes: nothing breaks. `scan` stays ~20% slower than it needs to be, and
+on a bad API day one agent run can take minutes before it gives up.
+
+## 2) Findings (Prioritized)
+
+### G1. Low-volume skills each cost a full request
+* **Category:** Network / Cost
+* **Severity:** Medium
+* **Impact:** `scan` latency, API calls per run
+* **Evidence:** traces `559d91e999d0` and `fe6365e7f444` (2026-09-30), same counts in both:
+  3101 LLM Integration -> 0, 3100 RAG -> 1, 3132 Agentic AI -> 5 (and keyword `crewai` -> 2),
+  while 95 Web Scraping and 2916 AI Chatbot Development fill 20 / 19. Each request costs
+  0.45-2.3 s, plus pacing up to 1 s. `commands.py:79` builds one request per skill id.
+* **Why it's inefficient:** DECISIONS says one request per skill because a big category fills the
+  shared list. That is true for 95/2916. It does not apply to skills that together return ~6
+  projects: one `jobs[]=3101&jobs[]=3100&jobs[]=3132` request with `limit=20` holds all of them.
+* **Recommended fix:** let a `skills.txt` line carry several ids (`3101 3100 3132  # small
+  AI skills`) that go into one request. Keep one line per id as the default for big categories.
+  Put the three low-volume ids on one line in the defaults and in Meriç's file.
+  `failed_skills` then reports the group.
+* **Tradeoffs / Risks:** DECISIONS change. Volumes move over time, so if the group ever returns 20,
+  it is full again. Warn in the trace when a grouped request hits `limit`. `failed_skills` changes
+  from a list of ints to possibly a list of groups, which bumps `schema_version`. Simpler
+  alternative with no schema change: drop 3101 (0 results in every run) from the defaults.
+* **Expected impact:** -2 requests (11 -> 9), roughly -2 to -3 s per scan (~15-20%). The "drop
+  3101" variant saves 1 request, ~1 s.
+* **Removal Safety:** Needs Verification (check live that the grouped request returns the union)
+* **Reuse Scope:** module (`files.load_skills`, `commands.scan`)
+
+### G2. No per-term contribution in the trace
+* **Category:** Cost (decision data) / Observability
+* **Severity:** Low
+* **Impact:** which terms are worth their request
+* **Evidence:** the `scan` trace line (`commands.py:100-107`) has only totals (`found`, `shown`). The
+  `result` lines have raw counts per request. 108 -> 83 means 25 duplicates, but the trace cannot say
+  which terms overlap (`n8n`/`zapier`/`make.com`? 3028/3132/2916?). The relevance work in
+  PROGRESS (v0.2) was done by reading listings by hand.
+* **Recommended fix:** in `scan`, count per term how many ids no earlier term produced, and add it
+  to the `scan` trace line: `new_by_term={"n8n": 17, "zapier": 9, "3028": 4, ...}`. Trace only,
+  JSON unchanged, no `schema_version` bump.
+* **Tradeoffs / Risks:** order-dependent (the first term takes the credit). Good enough for
+  "this term adds ~0 new projects". ~10 lines.
+* **Expected impact:** no speed gain on its own; it is what makes G1 and any future list trimming
+  safe to decide.
+* **Removal Safety:** Safe
+* **Reuse Scope:** local file (`commands.py`)
+
+### G3. `scan` has no overall deadline
+* **Category:** Reliability
+* **Severity:** Low
+* **Impact:** worst-case run time for the proposal agent
+* **Evidence:** per request, worst case is timeout 20 s + wait 2 s + timeout 20 s = 42 s
+  (`client.py:39-43`), and 429 adds up to 1+2+4 s (or `Retry-After` up to 10 s each). 11 requests
+  in a row: ~7.7 min before the agent sees output. Live 2026-09-29 (`50bec30bc868`): 3 keywords
+  took 55 s, with one request at 28.7 s.
+* **Recommended fix:** a total budget for `scan` (e.g. 120 s, `--max-time` to override). Once it is
+  spent, the remaining terms go straight into `failed_keywords`/`failed_skills` with a warning,
+  and the rest is shown as today. Use the existing `ctx.monotonic` so tests stay instant.
+* **Tradeoffs / Risks:** a new rule next to the timeout/429 rules -> DECISIONS. Partial output on a
+  bad day; that is already a documented outcome (`failed_*`).
+* **Expected impact:** worst case ~7.7 min -> ~2 min. No change on a normal day.
+* **Removal Safety:** Needs Verification
+* **Reuse Scope:** local file (`commands.py`)
+
+### G4. Cold first request (still F3, likely)
+* **Category:** Network
+* **Severity:** Low (likely)
+* **Evidence:** first request of `fe6365e7f444` took 5.2 s. The others in that run took 0.7-2.3 s, and
+  the first request of the other run took 1.3 s. Consistent with a cold DNS/TLS setup, but one sample.
+  Every request opens a new connection (`client.py:84`).
+* **Recommended fix:** as F3: measure the handshake before touching `client.py`. Worth it only if
+  it is > 150 ms per request; the 11 requests now make it ~20% more valuable than in v0.1.
+* **Removal Safety:** Needs Verification
+* **Reuse Scope:** module
+
+### G5. `search_projects` and `search_skill` repeat the same three steps
+* **Category:** Maintainability (Reuse Opportunity)
+* **Severity:** Low
+* **Evidence:** `client.py:87-91` and `client.py:93-102`: both build `params` with `**DETAILS`, call
+  `parse_search(self.get(SEARCH_ENDPOINT, ...))` and trace a `result` line. A change to one (e.g.
+  G2's per-request info, or a new detail flag) has to be made twice.
+* **Recommended fix:** `def _search(self, params): ...` used by both; `search_skill` keeps its id
+  check (defence in depth, `load_skills` already validates).
+* **Removal Safety:** Safe
+* **Reuse Scope:** local file
+
+### G6. CI runs the full matrix twice per release
+* **Category:** Build / Cost
+* **Severity:** Low
+* **Evidence:** `.github/workflows/test.yml:3-5` `on: push` fires for the `main` push and again for
+  the `v0.x.0` tag push of the same commit (PROGRESS: "dal ve etiket CI koşuları"): 4 + 4 jobs.
+* **Recommended fix:** `on: push: branches: ["**"]` (tags no longer trigger) plus `pull_request`.
+  Alternatively keep it: the tag run is a visible "release is green" badge.
+* **Tradeoffs / Risks:** none technical; it only matters for free-minute budgets. Public repo
+  minutes are free, so this is cosmetic.
+* **Removal Safety:** Safe
+* **Reuse Scope:** build
+
+### Still open from v0.1.0
+* **F9** `full_description` fetched for table output: now 11 x 20 descriptions per table scan.
+  Still unmeasured; the agent uses `--json`, which needs it anyway. Leave.
+* Trace growth: ~48 KB on a heavy day (2026-09-30), no cleanup. Years before it matters; low.
+
+### Checked and fine (no action)
+* Pacing: start-to-start (F1) works live; it added ~1.4 s over 11 requests (only after requests
+  under 1 s).
+* `flx skills` downloads the full catalog (3,483 skills, ~1.3 s) every call. It runs a few times a
+  month by hand; a cache would add state and staleness for no real gain.
+* `load_skills` checks repeats with a list (`int(text) not in skills`), which is O(n^2) at n <= 50:
+  trivial.
+* `merge_projects` over ~110 items, `save_seen` over <= 10k ids: microseconds.
+* Parallel requests: still rejected (DECISIONS, 429 risk); G1 cuts requests instead.
+* Tests: 115 in 0.8 s; slowest single test 0.13 s. Nothing to do.
+
+## 3) Quick Wins (Do First)
+1. G2 per-term `new_by_term` in the trace (~10 lines, trace only, unlocks G1 decisions).
+2. G5 extract `_search` (5 min, no behaviour change).
+3. G1 minimal variant: drop 3101 LLM Integration from the defaults (0 in every live run). This
+   changes the list, not the code, so it is Meriç's call.
+
+## 4) Deeper Optimizations (Do Next)
+1. G1 grouped skill lines (DECISIONS + `schema_version` 4 if `failed_skills` changes shape).
+2. G3 total `scan` budget (DECISIONS).
+3. G4/F3 connection reuse, only after a handshake measurement.
+
+## 5) Validation Plan
+* **Regression guard:** `python -m unittest discover -s tests` in full after each item.
+* **G1:** live, one GET each: `jobs[]=3101&jobs[]=3100&jobs[]=3132` versus the three single
+  requests. The grouped id set must equal the union. Then two `scan` runs before/after: compare the
+  `end` line `duration_ms`, request count (9 vs 11) and `found`. Scenario: a grouped line makes
+  one request with three `jobs[]` values; a failing group lands in `failed_skills`.
+* **G2:** unit test with overlapping fake batches: `new_by_term` sums to `found`, and the second term
+  with only duplicates shows 0.
+* **G3:** fake clock that advances 50 s per request, budget 120 s: the first 3 terms run, the rest
+  are in `failed_*` with no request sent, and there is one warning.
+* **G4:** as F3 in the v0.1 plan (time 11 fresh connections vs one kept connection, GET only).
+* **G6:** the next tag push shows no second workflow run for the same SHA.
+
+## 6) Optimized Code / Patch (sketches, not applied)
+
+G2, `commands.py` (after the loop; `batches` would need its term next to it):
+```python
+new_by_term, seen_ids = {}, set()
+for term, batch in zip(done_terms, batches):
+    ids = {p.id for p in batch if p.id is not None}
+    new_by_term[str(term)] = len(ids - seen_ids)
+    seen_ids |= ids
+ctx.tracer.log("scan", ..., new_by_term=new_by_term)
+```
+
+G5, `client.py`:
+```python
+def _search(self, params: dict[str, Any]) -> list[models.Project]:
+    projects = models.parse_search(self.get(SEARCH_ENDPOINT, {**params, **DETAILS}))
+    self._tracer.log("result", endpoint=SEARCH_ENDPOINT, count=len(projects))
+    return projects
+
+def search_projects(self, query, *, limit=20, offset=0):
+    return self._search({"query": query, "limit": limit, "offset": offset})
+```
+
+G1, `skills.txt` shape:
+```
+95    # Web Scraping
+2916  # AI Chatbot Development
+3101 3100 3132  # small AI skills, one request (G1)
+```
+
+G3, `commands.py` loop:
+```python
+if ctx.monotonic() - scan_started > args.max_time:
+    failed[kind].append(term)
+    continue  # warn once after the loop: "time budget spent, N terms skipped"
+```
+
+---
+
+# Earlier audit: flx v0.1.0 pre-publish (2026-09-29) (2026-09-29)
 
 Scope: `src/flx/*`, `tests/*`, `pyproject.toml`, `.github/workflows/test.yml`.
 
