@@ -9,6 +9,7 @@ a trace cannot reach the terminal as a control, bidi or zero-width character, wi
 from __future__ import annotations
 
 import json
+import os
 import sys
 import uuid
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from flx.auth import redact
+from flx.files import owner_only
 
 MAX_STR = 200
 
@@ -81,8 +83,13 @@ class Tracer:
         if self._write_failed:
             return
         try:
+            # Owner-only even if traces/ or today's file predate this rule or came from umask 002:
+            # they record every search and error.
             path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as fh:
+            owner_only(path.parent, 0o700)
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with open(fd, "a", encoding="utf-8") as fh:
+                owner_only(path, 0o600)
                 fh.write(line + "\n")
         except OSError as exc:
             self._write_failed = True

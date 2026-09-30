@@ -75,8 +75,7 @@ def ensure_config(config: Path) -> None:
     A dir that already exists, e.g. from `mkdir -p` with umask 002, is tightened to 700.
     """
     config.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if config.stat().st_mode & 0o077:
-        config.chmod(0o700)
+    owner_only(config, 0o700)
     skills = "".join(f"{skill_id}  # {name}\n" for skill_id, name in DEFAULT_SKILLS)
     for name, text in (
         (KEYWORDS_FILE, KEYWORDS_HEADER + "\n".join(DEFAULT_KEYWORDS) + "\n"),
@@ -87,6 +86,12 @@ def ensure_config(config: Path) -> None:
                 fh.write(text)
         except FileExistsError:
             pass  # never overwrite the user's list
+
+
+def owner_only(path: Path, mode: int) -> None:
+    """chmod `path` to `mode` if group or others have any access (umask 002 leaves 775/664)."""
+    if Path(path).stat().st_mode & 0o077:
+        Path(path).chmod(mode)
 
 
 def find(name: str, cwd: Path, config: Path) -> Path:

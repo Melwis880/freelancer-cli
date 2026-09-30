@@ -5,6 +5,7 @@ import http.server
 import io
 import json
 import os
+import stat
 import tempfile
 import threading
 import unittest
@@ -578,6 +579,40 @@ class S37ProjectLink(unittest.TestCase):
                 project = models.parse_project({"id": 1, "title": "t", "seo_url": seo_url})
                 self.assertIsNone(project.url)
                 self.assertEqual(project.title, "t")  # the rest of the project is kept
+
+
+class S38TracePermissions(unittest.TestCase):
+    """Traces record every search and error, so only the owner may read them."""
+
+    def setUp(self):
+        old = os.umask(0o002)  # a common default that makes 775 dirs and 664 files
+        self.addCleanup(os.umask, old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.traces = Path(tmp.name) / "traces"
+
+    def mode(self, path):
+        return stat.S_IMODE(path.stat().st_mode)
+
+    def test_new_trace_dir_and_file_are_owner_only(self):
+        Tracer("test", self.traces).log("one")
+        (trace_file,) = self.traces.glob("*.jsonl")
+        self.assertEqual(self.mode(self.traces), 0o700)
+        self.assertEqual(self.mode(trace_file), 0o600)
+
+    def test_existing_open_trace_dir_and_file_are_tightened_and_kept(self):
+        tracer = Tracer("test", self.traces)
+        self.traces.mkdir()
+        self.traces.chmod(0o775)
+        trace_file = self.traces / f"{tracer._now():%Y-%m-%d}.jsonl"
+        trace_file.write_text('{"earlier": 1}\n', encoding="utf-8")
+        trace_file.chmod(0o664)
+        tracer.log("two")
+        self.assertEqual(self.mode(self.traces), 0o700)
+        self.assertEqual(self.mode(trace_file), 0o600)
+        lines = trace_file.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(lines[0], '{"earlier": 1}')
+        self.assertEqual(json.loads(lines[1])["step"], "two")
 
 
 if __name__ == "__main__":
