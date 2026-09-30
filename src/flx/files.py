@@ -43,11 +43,14 @@ DEFAULT_KEYWORDS = (
 KEYWORDS_HEADER = (
     "# Search terms for `flx scan`, one per line. Blank lines and lines starting with # are skipped.\n"
 )
-# Freelancer skill ids: searching by skill matches exactly, where multi-word text does not.
+# Freelancer skill ids: searching by skill matches exactly, where multi-word text does not. Picked
+# by a live check (2026-09-30): "AI Automation" (3380) and "Workflow Automation" (3381) came back
+# about half video, sales or ERP work, so they are left out.
 DEFAULT_SKILLS = (
     (3028, "AI Agents"),
+    (3132, "Agentic AI"),
+    (2916, "AI Chatbot Development"),
     (3101, "LLM Integration"),
-    (3380, "AI Automation"),
     (3100, "Retrieval-Augmented Generation (RAG)"),
     (95, "Web Scraping"),
 )

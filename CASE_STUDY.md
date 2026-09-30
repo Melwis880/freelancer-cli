@@ -50,9 +50,14 @@ First live run (2026-09-29), with the original 11-keyword list:
 Relevance, measured (2026-09-30): a scan with niche keywords plus multi-word terms ("llm
 integration", "python web scraping") returned about half unrelated jobs. Searching each term alone
 showed why: the API matches multi-word text loosely, and those four terms found their phrase in 1 of
-80 results. They were replaced by skill searches (AI Agents, LLM Integration, AI Automation, RAG, Web
-Scraping), which match exactly. The next live scan: 85 jobs from 10 requests in 13 s, and 75 of them
-carry one of the target skills. Each job now also lists its skills, so the agent can filter on them.
+80 results. They were replaced by skill searches, which match exactly. Each skill was then checked
+on its own and kept only if most of its jobs were on target: "AI Automation" came back about half
+video and sales work and was dropped for "AI Chatbot Development" and "Agentic AI". The final list
+(AI Agents, Agentic AI, AI Chatbot Development, LLM Integration, RAG, Web Scraping, plus the five
+niche keywords) gave 83 jobs from 11 requests in 14 s. Read one by one, about 56 are clearly on
+target, 7 are borderline (manual list-building) and 20 are off target, mostly jobs that tag Zapier
+or AI for admin, sales or marketing work. That rest is left to the agent: each job now lists its
+skills, so the agent can filter on them.
 
 The result is a clean, de-duplicated, structured feed that a future bidding agent can consume
 directly: it reads `flx scan --only-new --json`, and all filtering and scoring stays on the agent's
