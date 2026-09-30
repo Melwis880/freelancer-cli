@@ -522,6 +522,12 @@ class S34SkillsFile(unittest.TestCase):
         skill_queries = [query_of(r)["jobs[]"] for r in run.opener.requests if "jobs[]" in query_of(r)]
         self.assertEqual(skill_queries, [[str(i)] for i in default_ids])
 
+    def test_default_skills_leave_out_the_ones_that_found_nothing_or_noise(self):
+        default_ids = [skill_id for skill_id, _ in files.DEFAULT_SKILLS]
+        self.assertEqual(default_ids, [3028, 3132, 2916, 3100, 95])
+        for dropped in (3101, 3380, 3381):  # LLM Integration: 0 jobs live; the others: mostly noise
+            self.assertNotIn(dropped, default_ids)
+
     def test_existing_skills_are_never_overwritten(self):
         root = temp_dir(self)
         (config_of(root) / files.SKILLS_FILE).write_text("95\n", encoding="utf-8")

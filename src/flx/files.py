@@ -46,12 +46,12 @@ KEYWORDS_HEADER = (
 )
 # Freelancer skill ids: searching by skill matches exactly, where multi-word text does not. Picked
 # by a live check (2026-09-30): "AI Automation" (3380) and "Workflow Automation" (3381) came back
-# about half video, sales or ERP work, so they are left out.
+# about half video, sales or ERP work, so they are left out. "LLM Integration" (3101) returned 0 jobs
+# in every live scan, so it cost a request for nothing and was dropped too.
 DEFAULT_SKILLS = (
     (3028, "AI Agents"),
     (3132, "Agentic AI"),
     (2916, "AI Chatbot Development"),
-    (3101, "LLM Integration"),
     (3100, "Retrieval-Augmented Generation (RAG)"),
     (95, "Web Scraping"),
 )

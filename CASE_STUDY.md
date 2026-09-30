@@ -57,7 +57,8 @@ video and sales work and was dropped for "AI Chatbot Development" and "Agentic A
 niche keywords) gave 83 jobs from 11 requests in 14 s. Read one by one, about 56 are clearly on
 target, 7 are borderline (manual list-building) and 20 are off target, mostly jobs that tag Zapier
 or AI for admin, sales or marketing work. That rest is left to the agent: each job now lists its
-skills, so the agent can filter on them.
+skills, so the agent can filter on them. LLM Integration was dropped afterwards: it returned 0
+jobs in every live scan, so it cost a request for nothing.
 
 The result is a clean, de-duplicated, structured feed that a future bidding agent can consume
 directly: it reads `flx scan --only-new --json`, and all filtering and scoring stays on the agent's
