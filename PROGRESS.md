@@ -88,6 +88,7 @@ Bitti sayılır: projeyi bilmeyen biri README ile 5 dakikada `flx scan` çalış
 - [x] `v0.1.0` etiketi (2026-09-29, açıklamalı, `chore(release): 0.1.0` commit'inde; 102 test geçiyor, 12/12 kasıtlı bozma yakalandı)
 - [x] Sadece benim açık "evet"imden sonra: GitHub reposu ve gönderim (2026-09-29, Meriç "EVET"): `https://github.com/Melwis880/freelancer-cli`, `main` + `v0.1.0` gönderildi. Öncesinde yerel `refs/original/` ve reflog silindi, `git gc --prune=now`; eski e-posta hiçbir git nesnesinde yok. İlk CI koşusu Python 3.10-3.13'te başarılı. `pip install -e .` yenilendi (pip ve `flx --version` 0.1.0).
 - [x] v0.1.0 canlı doğrulama (2026-09-30): `flx --debug scan --json`, 9 kelime, 13,0 sn (önce 21 sn), hepsi 200, 429 yok, 0 hata, 97 ilan. İstek başlangıçları arası: istek 1 sn'den kısaysa tam 1,00 sn, uzunsa istek süresi kadar (F1 doğrulandı). Zaman aşımı olmadı, F2 canlıda denenmedi (testte var). `~/.config/flx` 775 -> 700'e çekildi. Token çıktı, trace ve JSON'da yok.
+- [x] `CASE_STUDY.md` "Part 2: the agent on top" (2026-10-02): teklif ajanının nasıl çalıştığı ve ilk gerçek çalıştırmanın ölçülen sonuçları (84 ilan: 8 teklif, 34 sor, 42 geç; 5 taslak). Süre karşılaştırması ve teklif sonucu yok, ölçülünce eklenecek. Test sayısı 115 -> 123 düzeltildi; README'den vaka analizine link.
 - [ ] İsteğe bağlı: vaka notları Sosyal Medya ajanına ("build breakdown" postu) - Meriç kararı (2026-09-30): sistem tamamen bitince
 Bitti sayılır: herkese açık repo README ve çalışan CI ile yayında.
 

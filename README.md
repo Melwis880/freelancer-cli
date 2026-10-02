@@ -26,6 +26,9 @@ Freelancer *skill* instead (e.g. "AI Agents", "Web Scraping"), which matches exa
 It only fetches data. It does not filter, score or rank jobs; that is left to whatever reads
 its output.
 
+How it was built, what the live scans measured, and the bidding agent that reads its output:
+[CASE_STUDY.md](CASE_STUDY.md).
+
 ## Read-only by design
 
 - The HTTP client sends `GET` only. Any other method fails in code before a request is built,

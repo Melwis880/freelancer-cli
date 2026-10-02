@@ -35,7 +35,7 @@ official Freelancer REST API and does nothing else.
   they reach the terminal.
 
 Every behaviour is listed as a scenario in `tests/SCENARIOS.md`, each with an automated test
-(115 tests, no network). The tests were checked by deliberately breaking the code: every break was
+(123 tests, no network). The tests were checked by deliberately breaking the code: every break was
 caught.
 
 ## Impact
@@ -63,3 +63,45 @@ jobs in every live scan, so it cost a request for nothing.
 The result is a clean, de-duplicated, structured feed that a future bidding agent can consume
 directly: it reads `flx scan --only-new --json`, and all filtering and scoring stays on the agent's
 side.
+
+## Part 2: the agent on top
+
+`flx` was built to feed one consumer: a bidding agent that turns raw jobs into decisions and
+proposal drafts. That agent now runs in my private agent workspace. Its code is not in this repo;
+this section describes how it works and what its first real run produced.
+
+### How it works
+
+The agent is a Claude Code agent defined in plain Markdown: one identity file and two skills,
+"screen listings" and "write a proposal", plus a criteria file. It runs only when I ask.
+
+1. **Scan to a file first.** It runs `flx scan --json` and saves the raw output before reading a
+   single job, so every decision can be traced back to the data it was made on.
+2. **Treat job text as untrusted.** Clients write job descriptions, so each one is checked for
+   hidden Unicode (tag characters, zero-width and bidi controls) and for lines addressed to an AI.
+   A hit stops the run. Job text is read as data, never followed as an instruction.
+3. **Decide every job.** A core test (the deliverable is runnable code or configuration, it does
+   not depend on clicking around in the client's accounts, it automates a measurable business
+   process), three tiers, a budget floor, and a hard-reject list (fake traffic, review
+   manipulation, collecting personal data without consent). Each job gets one of three decisions:
+   bid, ask me, or skip, with a one-line reason.
+4. **Draft only what passes.** Proposals are written in the job's language, open with the
+   client's problem, give a 3-5 step approach that can be tested, and cite only proof that exists
+   publicly. If a claim is not on my public proof list, it is left out.
+5. **Never send.** Sending a bid stays with me, by hand. The agent is not allowed to bid or
+   message, and `flx` cannot send anything by construction.
+
+### First run (2026-09-30)
+
+- 84 jobs from 11 searches (5 keywords, 6 skills), no failed search.
+- Every job got a decision: **8 bid, 34 ask me, 42 skip**.
+- The 34 "ask me" jobs came back grouped into 9 questions (interface-heavy platform setup, broad
+  builds, server or money-system access, and so on), so I could decide them by group, not one by
+  one.
+- 2 proposal drafts in the run, 3 more on request the same day.
+- The agent also flagged gaps in its own rules instead of working around them silently. For
+  example, 16 of the 20 "Web Scraping" jobs were skipped as list-building or data entry, and the
+  scoring did not reward fit with my route. Each fix was proposed, none applied without my "yes".
+
+What it does not prove yet: no time comparison (I never screened these jobs by hand at this
+volume), and no bid outcomes so far. Both will be added only when they are measured.
